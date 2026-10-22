@@ -1,0 +1,19 @@
+# Python cache & local test harness
+__pycache__/
+*.py[cod]
+*$py.class
+test_suite.py
+
+# Local test screenshots
+dangerous_laser_preview.png
+dangerous_laser_raster_preview.png
+*.png
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.log
+*.tmp

@@ -776,6 +776,10 @@
       state.fileName = 'power_calibration_10_100';
       DOM.fileStatusBadge.textContent = 'Power Calibration 10%-100% (SVG)';
       loadSvgString(SampleData.powerCalibrationSVG);
+    } else if (key === 'svg_test') {
+      state.fileName = 'test';
+      DOM.fileStatusBadge.textContent = 'SVG Test';
+      loadSvgString(SampleData.svgTestSVG);
     } else if (key === 'raster') {
       state.fileName = 'grayscale_print_test';
       DOM.fileStatusBadge.textContent = 'Grayscale Print Test (2" Sample)';

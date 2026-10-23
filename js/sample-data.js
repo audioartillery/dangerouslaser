@@ -71,6 +71,120 @@ const SampleData = {
   </g>
 </svg>`,
 
+  // SVG Test Sample (from c:\dev\cnc\temp\test.svg)
+  svgTestSVG: `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="210mm"
+   height="297mm"
+   viewBox="0 0 210 297"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   sodipodi:docname="test.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     inkscape:zoom="1.6168981"
+     inkscape:cx="397.05655"
+     inkscape:cy="561.25984"
+     inkscape:window-width="1930"
+     inkscape:window-height="1290"
+     inkscape:window-x="1218"
+     inkscape:window-y="197"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <text
+       xml:space="preserve"
+       style="font-size:6.35px;writing-mode:lr-tb;direction:ltr;fill:#000000;stroke-width:0.264583"
+       x="106.52728"
+       y="97.69091"
+       id="text1"><tspan
+         sodipodi:role="line"
+         id="tspan1"
+         style="font-size:6.35px;stroke-width:0.264583"
+         x="106.52728"
+         y="97.69091">Test SVG</tspan></text>
+    <path
+       sodipodi:type="star"
+       style="fill:none;stroke:#000000;stroke-width:1;stroke-dasharray:none;stroke-opacity:1"
+       id="path1"
+       inkscape:flatsided="true"
+       sodipodi:sides="6"
+       sodipodi:cx="64.963638"
+       sodipodi:cy="131.56364"
+       sodipodi:r1="7.9156713"
+       sodipodi:r2="6.8551726"
+       sodipodi:arg1="0"
+       sodipodi:arg2="0.52359878"
+       inkscape:rounded="0"
+       inkscape:randomized="0"
+       d="m 72.87931,131.56364 -3.957836,6.85518 h -7.915671 l -3.957836,-6.85518 3.957836,-6.85517 h 7.915671 z"
+       transform="translate(16.2,-32.4)" />
+    <path
+       sodipodi:type="star"
+       style="fill:none;stroke:#000000;stroke-width:1;stroke-dasharray:none;stroke-opacity:1"
+       id="path1-8"
+       inkscape:flatsided="true"
+       sodipodi:sides="6"
+       sodipodi:cx="64.963638"
+       sodipodi:cy="131.56364"
+       sodipodi:r1="7.9156713"
+       sodipodi:r2="6.8551726"
+       sodipodi:arg1="0"
+       sodipodi:arg2="0.52359878"
+       inkscape:rounded="0"
+       inkscape:randomized="0"
+       d="m 72.87931,131.56364 -3.957836,6.85518 h -7.915671 l -3.957836,-6.85518 3.957836,-6.85517 h 7.915671 z"
+       transform="translate(16.160255,-16.072677)" />
+    <path
+       sodipodi:type="star"
+       style="fill:#000000;stroke:#000000;stroke-width:1;stroke-dasharray:none;stroke-opacity:1;fill-opacity:1"
+       id="path1-1"
+       inkscape:flatsided="true"
+       sodipodi:sides="6"
+       sodipodi:cx="64.963638"
+       sodipodi:cy="131.56364"
+       sodipodi:r1="7.9156713"
+       sodipodi:r2="6.8551726"
+       sodipodi:arg1="0"
+       sodipodi:arg2="0.52359878"
+       inkscape:rounded="0"
+       inkscape:randomized="0"
+       d="m 72.87931,131.56364 -3.957836,6.85518 h -7.915671 l -3.957836,-6.85518 3.957836,-6.85517 h 7.915671 z"
+       transform="translate(29.891883,-24.464722)" />
+    <circle
+       style="fill:none;fill-opacity:1;stroke:#000000;stroke-width:1;stroke-dasharray:none;stroke-opacity:1"
+       id="path2"
+       cx="113.72727"
+       cy="110.45454"
+       r="5.2363639" />
+    <path
+       style="fill:none;fill-opacity:1;stroke:#000000;stroke-width:1;stroke-dasharray:none;stroke-opacity:1"
+       d="m 95.4,125.34545 c 0,0 5.56363,-12.27272 14.07273,-3.92727 8.50909,8.34545 18.65455,9.16364 25.36364,0.81818 6.70909,-8.34545 -4.25455,-16.19999 -4.25455,-16.19999"
+       id="path3"
+       sodipodi:nodetypes="cssc" />
+  </g>
+</svg>`,
+
   /**
    * Generates a compact 2"x2" (192x192 px at 96 DPI) Grayscale Laser Printer Test Page
    * Features:

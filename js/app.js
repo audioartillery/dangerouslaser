@@ -43,7 +43,7 @@
 
     // Raster options (default standard inches)
     rasterMode: 'grayscale', // 'dither', 'atkinson', 'grayscale', 'contour'
-    lineInterval: 0.015,     // in (~0.38 mm, compact & fast for 2" test)
+    lineInterval: 0.008,     // in (~0.2 mm)
     bidirectional: true,
     contrast: 0,
     brightness: 0,
@@ -343,7 +343,7 @@
 
     DOM.lineInterval.value = state.lineInterval;
     DOM.lineInterval.addEventListener('change', (e) => {
-      state.lineInterval = Math.max(0.002, parseFloat(e.target.value) || 0.015);
+      state.lineInterval = Math.max(0.001, parseFloat(e.target.value) || 0.008);
       triggerUpdate(20);
     });
 

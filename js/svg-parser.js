@@ -506,6 +506,206 @@ const SVGParser = (function() {
   }
 
   /**
+   * Simplify a polyline using Ramer-Douglas-Peucker algorithm
+   */
+  function simplifyPolyline(pts, tolerance = 0.2) {
+    if (!pts || pts.length <= 2) return pts;
+    const sqTol = tolerance * tolerance;
+    const keep = new Uint8Array(pts.length);
+    keep[0] = 1;
+    keep[pts.length - 1] = 1;
+
+    const stack = [[0, pts.length - 1]];
+    while (stack.length > 0) {
+      const [first, last] = stack.pop();
+      let maxSqDist = 0;
+      let index = -1;
+
+      const p1 = pts[first];
+      const p2 = pts[last];
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const lenSq = dx * dx + dy * dy;
+
+      for (let i = first + 1; i < last; i++) {
+        const p = pts[i];
+        let t = 0;
+        if (lenSq > 1e-12) {
+          t = ((p.x - p1.x) * dx + (p.y - p1.y) * dy) / lenSq;
+          t = Math.max(0, Math.min(1, t));
+        }
+        const projX = p1.x + t * dx;
+        const projY = p1.y + t * dy;
+        const distSq = (p.x - projX) * (p.x - projX) + (p.y - projY) * (p.y - projY);
+        if (distSq > maxSqDist) {
+          maxSqDist = distSq;
+          index = i;
+        }
+      }
+
+      if (maxSqDist > sqTol && index !== -1) {
+        keep[index] = 1;
+        stack.push([first, index], [index, last]);
+      }
+    }
+
+    const result = [];
+    for (let i = 0; i < pts.length; i++) {
+      if (keep[i]) result.push(pts[i]);
+    }
+    return result;
+  }
+
+  /**
+   * High-precision contour tracer for rasterized glyph bitmaps.
+   * Extracts directed pixel-boundary loops, preserves true 90-degree corners,
+   * smooths pixel staircases along diagonals/curves, and simplifies with RDP.
+   */
+  function traceGlyphContours(binaryBuffer, width, height) {
+    const isSolid = (x, y) => {
+      if (x < 0 || y < 0 || x >= width || y >= height) return false;
+      return binaryBuffer[y * width + x] === 0;
+    };
+
+    // Directed boundary edges keeping solid pixel to the right in screen coords (CW outer, CCW inner)
+    const edges = [];
+    const outMap = new Map();
+    const ptKey = (x, y) => (y * (width + 2) + x);
+
+    function addDirectedEdge(x1, y1, x2, y2) {
+      const idx = edges.length;
+      edges.push({ x1, y1, x2, y2, used: false });
+      const k = ptKey(x1, y1);
+      let list = outMap.get(k);
+      if (!list) {
+        list = [];
+        outMap.set(k, list);
+      }
+      list.push(idx);
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (!isSolid(x, y)) continue;
+        if (!isSolid(x, y - 1)) addDirectedEdge(x, y, x + 1, y);         // Top
+        if (!isSolid(x + 1, y)) addDirectedEdge(x + 1, y, x + 1, y + 1); // Right
+        if (!isSolid(x, y + 1)) addDirectedEdge(x + 1, y + 1, x, y + 1); // Bottom
+        if (!isSolid(x - 1, y)) addDirectedEdge(x, y + 1, x, y);         // Left
+      }
+    }
+
+    if (!edges.length) return [];
+
+    const loops = [];
+    for (let i = 0; i < edges.length; i++) {
+      if (edges[i].used) continue;
+
+      const ring = [];
+      let curEdge = edges[i];
+      curEdge.used = true;
+      ring.push({ x: curEdge.x1, y: curEdge.y1 });
+
+      let cx = curEdge.x2;
+      let cy = curEdge.y2;
+      let guard = 0;
+
+      while (guard++ <= edges.length) {
+        if (cx === ring[0].x && cy === ring[0].y) break;
+        ring.push({ x: cx, y: cy });
+
+        const candidates = outMap.get(ptKey(cx, cy));
+        if (!candidates) break;
+        let nextIdx = -1;
+        for (let c = 0; c < candidates.length; c++) {
+          if (!edges[candidates[c]].used) {
+            nextIdx = candidates[c];
+            break;
+          }
+        }
+        if (nextIdx === -1) break;
+        edges[nextIdx].used = true;
+        cx = edges[nextIdx].x2;
+        cy = edges[nextIdx].y2;
+      }
+
+      const M = ring.length;
+      if (M < 4) continue;
+
+      // Detect true axis-aligned corners (where a straight run of >= 4px meets an orthogonal run of >= 4px)
+      const isCorner = new Uint8Array(M);
+      const look = 4;
+      if (M >= look * 2) {
+        for (let j = 0; j < M; j++) {
+          const pPrev = ring[(j - look + M) % M];
+          const pCurr = ring[j];
+          const pNext = ring[(j + look) % M];
+          const dx1 = pCurr.x - pPrev.x;
+          const dy1 = pCurr.y - pPrev.y;
+          const dx2 = pNext.x - pCurr.x;
+          const dy2 = pNext.y - pCurr.y;
+          const ortho1 = (dy1 === 0 && Math.abs(dx1) === look) && (dx2 === 0 && Math.abs(dy2) === look);
+          const ortho2 = (dx1 === 0 && Math.abs(dy1) === look) && (dy2 === 0 && Math.abs(dx2) === look);
+          if (ortho1 || ortho2) {
+            isCorner[j] = 1;
+          }
+        }
+      }
+
+      // Smooth pixel staircases (4 iterations of corner-preserving Laplacian smoothing)
+      let current = ring;
+      const passes = 4;
+      for (let pass = 0; pass < passes; pass++) {
+        const next = new Array(M);
+        for (let j = 0; j < M; j++) {
+          if (isCorner[j]) {
+            next[j] = { x: current[j].x, y: current[j].y };
+          } else {
+            const prevPt = current[(j - 1 + M) % M];
+            const currPt = current[j];
+            const nextPt = current[(j + 1) % M];
+            next[j] = {
+              x: 0.25 * prevPt.x + 0.5 * currPt.x + 0.25 * nextPt.x,
+              y: 0.25 * prevPt.y + 0.5 * currPt.y + 0.25 * nextPt.y
+            };
+          }
+        }
+        current = next;
+      }
+
+      // Close ring and simplify
+      const closed = [...current, { x: current[0].x, y: current[0].y }];
+      const simplified = simplifyPolyline(closed, 0.18);
+      if (simplified.length >= 3) {
+        loops.push(simplified);
+      }
+    }
+
+    return loops;
+  }
+
+  /**
+   * Read an inline style property or XML attribute from an element or its ancestors
+   */
+  function getInheritedStyleOrAttr(elem, propName, defaultVal = '') {
+    let cur = elem;
+    const regex = new RegExp(`(?:^|;)\\s*${propName}\\s*:\\s*([^;]+)`, 'i');
+    while (cur && cur.nodeType === 1) {
+      const styleAttr = cur.getAttribute('style');
+      if (styleAttr) {
+        const m = styleAttr.match(regex);
+        if (m && m[1]) return m[1].trim();
+      }
+      if (cur.hasAttribute(propName)) {
+        const val = cur.getAttribute(propName);
+        if (val !== null && val !== '') return val.trim();
+      }
+      if (cur.tagName && cur.tagName.toLowerCase() === 'svg') break;
+      cur = cur.parentElement;
+    }
+    return defaultVal;
+  }
+
+  /**
    * Convert SVG text string into vector outline subpaths using offscreen canvas & contour tracing
    */
   function textToPaths(opts) {
@@ -517,32 +717,52 @@ const SVGParser = (function() {
       fontFamily = 'sans-serif',
       fontWeight = 'normal',
       fontStyle = 'normal',
-      textAnchor = 'start'
+      fontVariant = 'normal',
+      fontStretch = '',
+      letterSpacing = 0,
+      textAnchor = 'start',
+      svgStartPos = null,
+      svgTextLength = null
     } = opts;
 
     if (!text || !text.trim()) return [];
+    const validFontSize = Math.max(1e-4, fontSize);
 
-    // Scale up for high resolution contour tracing
-    const scale = Math.max(2, Math.min(40, Math.ceil(64 / Math.max(0.5, fontSize))));
-    const renderFontSize = Math.round(fontSize * scale);
+    // Always render at high fixed pixel size (128px) for crisp glyph shapes regardless of SVG user unit scale
+    const renderFontSize = 128;
+    const scale = renderFontSize / validFontSize;
 
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.font = `${fontStyle} ${fontWeight} ${renderFontSize}px ${fontFamily}`;
+    const variantPart = (fontVariant && fontVariant !== 'normal') ? `${fontVariant} ` : '';
+    const stretchPart = (fontStretch && fontStretch !== 'normal' && fontStretch !== '100%') ? `${fontStretch} ` : '';
+    const fontSpec = `${fontStyle} ${variantPart}${fontWeight} ${stretchPart}${renderFontSize}px ${fontFamily}`;
+
+    ctx.font = fontSpec;
+    if (letterSpacing && 'letterSpacing' in ctx) {
+      ctx.letterSpacing = `${letterSpacing * scale}px`;
+    }
 
     const metrics = ctx.measureText(text);
     const textWidth = metrics.width;
-    const ascent = metrics.actualBoundingBoxAscent || renderFontSize * 0.8;
-    const descent = metrics.actualBoundingBoxDescent || renderFontSize * 0.25;
+    if (textWidth <= 0) return [];
 
-    const pad = 12;
-    const w = Math.ceil(textWidth + pad * 2);
+    const ascent = metrics.actualBoundingBoxAscent || renderFontSize * 0.85;
+    const descent = metrics.actualBoundingBoxDescent || renderFontSize * 0.3;
+    const leftOverhang = Math.max(0, metrics.actualBoundingBoxLeft || 0);
+    const rightOverhang = Math.max(0, (metrics.actualBoundingBoxRight || textWidth) - textWidth);
+
+    const pad = 16;
+    const w = Math.ceil(textWidth + leftOverhang + rightOverhang + pad * 2);
     const h = Math.ceil(ascent + descent + pad * 2);
 
     canvas.width = w;
     canvas.height = h;
 
-    ctx.font = `${fontStyle} ${fontWeight} ${renderFontSize}px ${fontFamily}`;
+    ctx.font = fontSpec;
+    if (letterSpacing && 'letterSpacing' in ctx) {
+      ctx.letterSpacing = `${letterSpacing * scale}px`;
+    }
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, w, h);
 
@@ -550,7 +770,7 @@ const SVGParser = (function() {
     ctx.textBaseline = 'alphabetic';
     ctx.textAlign = 'left';
 
-    const drawX = pad;
+    const drawX = pad + leftOverhang;
     const drawY = pad + ascent;
     ctx.fillText(text, drawX, drawY);
 
@@ -560,25 +780,39 @@ const SVGParser = (function() {
 
     for (let i = 0; i < data.length; i += 4) {
       const luminance = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-      bin[i / 4] = luminance < 140 ? 0 : 1;
+      bin[i / 4] = luminance < 128 ? 0 : 1;
     }
 
-    // Trace contours
-    const loops = RasterEngine.traceContours(bin, w, h, w, h);
+    const loops = traceGlyphContours(bin, w, h);
     if (!loops || !loops.length) return [];
 
-    let anchorShiftX = 0;
-    if (textAnchor === 'middle') {
-      anchorShiftX = -(textWidth / scale) / 2;
-    } else if (textAnchor === 'end') {
-      anchorShiftX = -(textWidth / scale);
+    // Determine exact baseline start position in SVG local user coordinates
+    let originX = x;
+    let originY = y;
+    const canvasAdvanceUser = textWidth / scale;
+
+    if (svgStartPos && !isNaN(svgStartPos.x) && !isNaN(svgStartPos.y)) {
+      originX = svgStartPos.x;
+      originY = svgStartPos.y;
+    } else {
+      const effectiveWidth = (svgTextLength && svgTextLength > 0) ? svgTextLength : canvasAdvanceUser;
+      if (textAnchor === 'middle') {
+        originX -= effectiveWidth / 2;
+      } else if (textAnchor === 'end') {
+        originX -= effectiveWidth;
+      }
     }
+
+    // Match horizontal advance width to SVG native text layout if available
+    const widthRatio = (svgTextLength && svgTextLength > 0 && canvasAdvanceUser > 0)
+      ? (svgTextLength / canvasAdvanceUser)
+      : 1.0;
 
     const result = [];
     for (const loop of loops) {
       const mapped = loop.map(pt => ({
-        x: x + anchorShiftX + (pt.x - drawX) / scale,
-        y: y + (pt.y - drawY) / scale
+        x: originX + ((pt.x - drawX) / scale) * widthRatio,
+        y: originY + (pt.y - drawY) / scale
       }));
       if (mapped.length >= 3) {
         result.push(mapped);
@@ -736,62 +970,113 @@ const SVGParser = (function() {
       }
 
       case 'text': {
+        function processTextNodeElement(targetEl, localMatrix, powerVal) {
+          const txt = (targetEl.textContent || '').replace(/[\r\n\t ]+/g, ' ').trim();
+          if (!txt) return;
+
+          const cs = (typeof window !== 'undefined' && window.getComputedStyle && targetEl.isConnected)
+            ? window.getComputedStyle(targetEl)
+            : null;
+
+          const xAttr = targetEl.getAttribute('x') !== null ? targetEl.getAttribute('x') : elem.getAttribute('x');
+          const yAttr = targetEl.getAttribute('y') !== null ? targetEl.getAttribute('y') : elem.getAttribute('y');
+          const dxAttr = targetEl.getAttribute('dx') !== null ? targetEl.getAttribute('dx') : elem.getAttribute('dx');
+          const dyAttr = targetEl.getAttribute('dy') !== null ? targetEl.getAttribute('dy') : elem.getAttribute('dy');
+
+          const x = parseLength(xAttr, 0) + parseLength(dxAttr, 0);
+          const y = parseLength(yAttr, 0) + parseLength(dyAttr, 0);
+
+          let fontSize = (cs && cs.fontSize && !isNaN(parseFloat(cs.fontSize)))
+            ? parseFloat(cs.fontSize)
+            : parseLength(getInheritedStyleOrAttr(targetEl, 'font-size', '16'), 16);
+
+          const fontFamily = (cs && cs.fontFamily) || getInheritedStyleOrAttr(targetEl, 'font-family', 'sans-serif');
+          const fontWeight = (cs && cs.fontWeight) || getInheritedStyleOrAttr(targetEl, 'font-weight', 'normal');
+          const fontStyle = (cs && cs.fontStyle) || getInheritedStyleOrAttr(targetEl, 'font-style', 'normal');
+          const fontVariant = (cs && cs.fontVariant) || getInheritedStyleOrAttr(targetEl, 'font-variant', 'normal');
+          const fontStretch = (cs && cs.fontStretch) || getInheritedStyleOrAttr(targetEl, 'font-stretch', 'normal');
+          const textAnchor = (cs && cs.textAnchor) || getInheritedStyleOrAttr(targetEl, 'text-anchor', 'start');
+
+          let letterSpacing = 0;
+          if (cs && cs.letterSpacing && cs.letterSpacing !== 'normal') {
+            letterSpacing = parseFloat(cs.letterSpacing) || 0;
+          } else {
+            letterSpacing = parseLength(getInheritedStyleOrAttr(targetEl, 'letter-spacing', '0'), 0);
+          }
+
+          let svgStartPos = null;
+          let svgTextLength = null;
+
+          if (targetEl.isConnected && typeof targetEl.getNumberOfChars === 'function') {
+            try {
+              const nChars = targetEl.getNumberOfChars();
+              if (nChars > 0) {
+                const rawPreserved = (targetEl.textContent || '').replace(/[\r\n\t]/g, ' ');
+                const firstNonSpace = rawPreserved.search(/\S/);
+                if (nChars === rawPreserved.length && firstNonSpace >= 0) {
+                  let lastNonSpace = rawPreserved.length - 1;
+                  while (lastNonSpace > firstNonSpace && /\s/.test(rawPreserved[lastNonSpace])) {
+                    lastNonSpace--;
+                  }
+                  const count = lastNonSpace - firstNonSpace + 1;
+                  const p0 = targetEl.getStartPositionOfChar(firstNonSpace);
+                  svgStartPos = { x: p0.x, y: p0.y };
+                  svgTextLength = targetEl.getSubStringLength(firstNonSpace, count);
+                } else {
+                  const p0 = targetEl.getStartPositionOfChar(0);
+                  svgStartPos = { x: p0.x, y: p0.y };
+                  svgTextLength = targetEl.getComputedTextLength();
+                }
+              }
+            } catch (err) {
+              // Fallback to attribute coordinates if SVG text geometry API throws
+            }
+          }
+
+          const textSubpaths = textToPaths({
+            text: txt,
+            x,
+            y,
+            fontSize,
+            fontFamily,
+            fontWeight,
+            fontStyle,
+            fontVariant,
+            fontStretch,
+            letterSpacing,
+            textAnchor,
+            svgStartPos,
+            svgTextLength
+          });
+
+          for (const sp of textSubpaths) {
+            if (!sp || sp.length < 2) continue;
+            const transformedPath = sp.map(pt => {
+              const tpt = Matrix.transformPoint(localMatrix, pt.x, pt.y);
+              if (powerVal !== undefined) tpt.power = powerVal;
+              return tpt;
+            });
+            if (powerVal !== undefined) transformedPath.power = powerVal;
+            paths.push(transformedPath);
+          }
+        }
+
         const tspans = elem.querySelectorAll('tspan');
         if (tspans && tspans.length > 0) {
           for (let i = 0; i < tspans.length; i++) {
             const tspan = tspans[i];
-            const txt = (tspan.textContent || '').trim();
-            if (!txt) continue;
-            const x = parseLength(tspan.getAttribute('x') || elem.getAttribute('x'), 0);
-            const y = parseLength(tspan.getAttribute('y') || elem.getAttribute('y'), 0);
-            const fontSizeAttr = tspan.getAttribute('font-size') || elem.getAttribute('font-size') || '16';
-            const fontSize = parseLength(fontSizeAttr, 16);
-            const fontFamily = tspan.getAttribute('font-family') || elem.getAttribute('font-family') || 'sans-serif';
-            const fontWeight = tspan.getAttribute('font-weight') || elem.getAttribute('font-weight') || 'normal';
-            const fontStyle = tspan.getAttribute('font-style') || elem.getAttribute('font-style') || 'normal';
-            const textAnchor = tspan.getAttribute('text-anchor') || elem.getAttribute('text-anchor') || 'start';
-
+            // Only process leaf tspans to avoid duplicating nested tspans
+            if (tspan.querySelector('tspan')) continue;
+            const tspanTransform = parseTransform(tspan.getAttribute('transform'));
+            const tspanMatrix = Matrix.multiply(currentMatrix, tspanTransform);
             const tspanPowerAttr = tspan.getAttribute('data-power');
             const tspanPower = (tspanPowerAttr !== null && tspanPowerAttr !== '' && !isNaN(parseFloat(tspanPowerAttr)))
               ? parseFloat(tspanPowerAttr)
               : currentPower;
-
-            const textSubpaths = textToPaths({
-              text: txt,
-              x,
-              y,
-              fontSize,
-              fontFamily,
-              fontWeight,
-              fontStyle,
-              textAnchor
-            });
-            addSubpaths(textSubpaths, tspanPower);
+            processTextNodeElement(tspan, tspanMatrix, tspanPower);
           }
         } else {
-          const textContent = (elem.textContent || '').trim();
-          if (textContent) {
-            const x = parseLength(elem.getAttribute('x'), 0);
-            const y = parseLength(elem.getAttribute('y'), 0);
-            const fontSizeAttr = elem.getAttribute('font-size') || '16';
-            const fontSize = parseLength(fontSizeAttr, 16);
-            const fontFamily = elem.getAttribute('font-family') || 'sans-serif';
-            const fontWeight = elem.getAttribute('font-weight') || 'normal';
-            const fontStyle = elem.getAttribute('font-style') || 'normal';
-            const textAnchor = elem.getAttribute('text-anchor') || 'start';
-
-            const textSubpaths = textToPaths({
-              text: textContent,
-              x,
-              y,
-              fontSize,
-              fontFamily,
-              fontWeight,
-              fontStyle,
-              textAnchor
-            });
-            addSubpaths(textSubpaths, currentPower);
-          }
+          processTextNodeElement(elem, currentMatrix, currentPower);
         }
         return; // Don't traverse child elements (like tspan) again
       }
@@ -834,8 +1119,8 @@ const SVGParser = (function() {
 
     const widthAttr = svgElem.getAttribute('width');
     const heightAttr = svgElem.getAttribute('height');
-    let width = widthAttr ? parseLength(widthAttr) : (viewBox ? viewBox.width : 300);
-    let height = heightAttr ? parseLength(heightAttr) : (viewBox ? viewBox.height : 150);
+    let width = (widthAttr && !widthAttr.trim().endsWith('%')) ? parseLength(widthAttr) : (viewBox ? viewBox.width : 300);
+    let height = (heightAttr && !heightAttr.trim().endsWith('%')) ? parseLength(heightAttr) : (viewBox ? viewBox.height : 150);
 
     // Initial transform matrix: if viewBox differs from width/height
     let rootMatrix = Matrix.identity();
@@ -846,7 +1131,20 @@ const SVGParser = (function() {
     }
 
     const paths = [];
-    extractPathsFromElement(svgElem, rootMatrix, paths);
+    let hostDiv = null;
+    try {
+      if (typeof document !== 'undefined' && document.body) {
+        hostDiv = document.createElement('div');
+        hostDiv.style.cssText = `position:fixed;left:-99999px;top:-99999px;width:${width}px;height:${height}px;overflow:hidden;visibility:hidden;pointer-events:none;font:initial;`;
+        hostDiv.appendChild(svgElem);
+        document.body.appendChild(hostDiv);
+      }
+      extractPathsFromElement(svgElem, rootMatrix, paths);
+    } finally {
+      if (hostDiv && hostDiv.parentNode) {
+        hostDiv.parentNode.removeChild(hostDiv);
+      }
+    }
 
     // Compute bounds
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

@@ -590,16 +590,36 @@
    * Force all SVG elements to render in pure white (#ffffff)
    * Color of SVG elements will be ignored and always drawn the same regardless of color
    */
-  function makeSvgWhite(svgText) {
+  function makeSvgWhite(svgText, docW, docH) {
     try {
       const parser = new DOMParser();
       const doc = parser.parseFromString(svgText, 'image/svg+xml');
       if (doc.querySelector('parsererror')) return svgText;
 
+      const svgRoot = doc.documentElement;
+      if (svgRoot && docW > 0 && docH > 0) {
+        const wAttr = svgRoot.getAttribute('width');
+        const hAttr = svgRoot.getAttribute('height');
+        if (!wAttr || wAttr.trim().endsWith('%')) {
+          svgRoot.setAttribute('width', `${docW}px`);
+        }
+        if (!hAttr || hAttr.trim().endsWith('%')) {
+          svgRoot.setAttribute('height', `${docH}px`);
+        }
+      }
+
       const allElements = doc.querySelectorAll('*');
       allElements.forEach(el => {
         const tag = el.tagName.toLowerCase();
-        if (tag === 'svg' || tag === 'defs' || tag === 'style' || tag === 'metadata') return;
+        if (tag === 'svg' || tag === 'defs' || tag === 'metadata') return;
+        if (tag === 'style') {
+          if (el.textContent) {
+            el.textContent = el.textContent
+              .replace(/(^|[;{\s])stroke\s*:\s*(?!none\b)[^;}\n]+/gi, '$1stroke: #ffffff')
+              .replace(/(^|[;{\s])fill\s*:\s*(?!none\b)[^;}\n]+/gi, '$1fill: #ffffff');
+          }
+          return;
+        }
 
         // Force stroke to white if stroked
         if (el.hasAttribute('stroke')) {
@@ -626,8 +646,8 @@
         const style = el.getAttribute('style');
         if (style) {
           let updatedStyle = style
-            .replace(/stroke\s*:\s*(?!none\b)[^;]+/gi, 'stroke: #ffffff')
-            .replace(/fill\s*:\s*(?!none\b)[^;]+/gi, 'fill: #ffffff');
+            .replace(/(^|;\s*)stroke\s*:\s*(?!none\b)[^;]+/gi, '$1stroke: #ffffff')
+            .replace(/(^|;\s*)fill\s*:\s*(?!none\b)[^;]+/gi, '$1fill: #ffffff');
           el.setAttribute('style', updatedStyle);
         }
       });
@@ -677,15 +697,15 @@
       DOM.dimHeight.value = Number(state.targetHeight).toFixed(state.units === 'standard' ? 3 : 1);
 
       // Create a pure white preview image from SVG
-      const whiteSvgText = makeSvgWhite(svgText);
+      const whiteSvgText = makeSvgWhite(svgText, docW, docH);
       const svgBlob = new Blob([whiteSvgText], { type: 'image/svg+xml;charset=utf-8' });
       const url = URL.createObjectURL(svgBlob);
       const img = new Image();
       img.onload = () => {
         // Also draw onto offscreen canvas with source-in #ffffff to guarantee 100% white pixels across all browsers
         const offCanvas = document.createElement('canvas');
-        const w = Math.max(1, Math.round(img.width || state.rawDocWidthPx || 384));
-        const h = Math.max(1, Math.round(img.height || state.rawDocHeightPx || 384));
+        const w = Math.max(1, Math.round(state.rawDocWidthPx || img.width || 384));
+        const h = Math.max(1, Math.round(state.rawDocHeightPx || img.height || 384));
         offCanvas.width = w;
         offCanvas.height = h;
         const offCtx = offCanvas.getContext('2d');

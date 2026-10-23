@@ -34,6 +34,8 @@
     flipH: false,
     flipV: false,
     originAlign: 'center', // Center is the default machine zero
+    offsetX: 0,
+    offsetY: 0,
 
     // Laser & Feeds (default standard in/min)
     laserPower: 100,    // 1 to 100 (%)
@@ -102,6 +104,8 @@
     btnFlipH: document.getElementById('btn-flip-h'),
     btnFlipV: document.getElementById('btn-flip-v'),
     originAlign: document.getElementById('origin-align'),
+    originOffsetX: document.getElementById('origin-offset-x'),
+    originOffsetY: document.getElementById('origin-offset-y'),
 
     // Raster Section
     rasterOptionsSection: document.getElementById('raster-options-section'),
@@ -334,6 +338,28 @@
       triggerUpdate(10);
     });
 
+    if (DOM.originOffsetX) {
+      DOM.originOffsetX.value = state.offsetX;
+      const onOffsetX = (e) => {
+        const val = parseFloat(e.target.value);
+        state.offsetX = isNaN(val) ? 0 : val;
+        triggerUpdate(20);
+      };
+      DOM.originOffsetX.addEventListener('input', onOffsetX);
+      DOM.originOffsetX.addEventListener('change', onOffsetX);
+    }
+
+    if (DOM.originOffsetY) {
+      DOM.originOffsetY.value = state.offsetY;
+      const onOffsetY = (e) => {
+        const val = parseFloat(e.target.value);
+        state.offsetY = isNaN(val) ? 0 : val;
+        triggerUpdate(20);
+      };
+      DOM.originOffsetY.addEventListener('input', onOffsetY);
+      DOM.originOffsetY.addEventListener('change', onOffsetY);
+    }
+
     // 6. Raster Controls
     DOM.rasterMode.value = state.rasterMode;
     DOM.rasterMode.addEventListener('change', (e) => {
@@ -495,6 +521,8 @@
       state.rawHeight = state.rawHeight / 25.4;
       state.targetWidth = state.targetWidth / 25.4;
       state.targetHeight = state.targetHeight / 25.4;
+      state.offsetX = Number((state.offsetX / 25.4).toFixed(3));
+      state.offsetY = Number((state.offsetY / 25.4).toFixed(3));
       state.cutFeedrate = Math.max(1, Math.round(state.cutFeedrate / 25.4));
       state.rapidFeedrate = Math.max(1, Math.round(state.rapidFeedrate / 25.4));
       state.lineInterval = Number((state.lineInterval / 25.4).toFixed(3));
@@ -506,6 +534,8 @@
       state.rawHeight = state.rawHeight * 25.4;
       state.targetWidth = state.targetWidth * 25.4;
       state.targetHeight = state.targetHeight * 25.4;
+      state.offsetX = Number((state.offsetX * 25.4).toFixed(2));
+      state.offsetY = Number((state.offsetY * 25.4).toFixed(2));
       state.cutFeedrate = Math.round(state.cutFeedrate * 25.4);
       state.rapidFeedrate = Math.round(state.rapidFeedrate * 25.4);
       state.lineInterval = Number((state.lineInterval * 25.4).toFixed(2));
@@ -515,6 +545,8 @@
 
     DOM.dimWidth.value = Number(state.targetWidth).toFixed(isStandard ? 3 : 1);
     DOM.dimHeight.value = Number(state.targetHeight).toFixed(isStandard ? 3 : 1);
+    if (DOM.originOffsetX) DOM.originOffsetX.value = state.offsetX;
+    if (DOM.originOffsetY) DOM.originOffsetY.value = state.offsetY;
     DOM.cutFeedrate.value = state.cutFeedrate;
     DOM.rapidFeedrate.value = state.rapidFeedrate;
     DOM.lineInterval.value = state.lineInterval;
@@ -804,7 +836,7 @@
       docH = state.targetHeight;
     }
 
-    // 2. Apply Geometric Transformations (Scale, Rotate, Flip, Origin Align)
+    // 2. Apply Geometric Transformations (Scale, Rotate, Flip, Origin Align, Offsets)
     const transformed = GcodeGenerator.transformPaths(rawPaths, {
       targetWidth: state.targetWidth,
       targetHeight: state.targetHeight,
@@ -813,7 +845,9 @@
       rotationDeg: state.rotationDeg,
       flipH: state.flipH,
       flipV: state.flipV,
-      originAlign: state.originAlign
+      originAlign: state.originAlign,
+      offsetX: state.offsetX,
+      offsetY: state.offsetY
     });
 
     state.transformedPaths = transformed.paths;

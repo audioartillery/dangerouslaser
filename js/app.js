@@ -13,6 +13,15 @@
     fileType: null,    // 'svg' or 'raster'
     fileName: 'laser_project',
 
+    // Source Mode & Custom Text Options
+    sourceMode: 'file', // 'file' or 'text'
+    customText: 'DANGEROUS\nLASER',
+    customTextFont: 'Arial',
+    customTextSize: 0.5, // in current units (0.5 in default)
+    customTextJustify: 'center', // 'left', 'center', 'right'
+    customTextBold: false,
+    customTextItalic: false,
+
     // Raw loaded data
     svgString: null,
     rawSvgData: null,   // { paths, width, height, bounds, originalWidth, originalHeight }
@@ -71,10 +80,20 @@
     unitsSelect: document.getElementById('units-select'),
     themeSelect: document.getElementById('theme-select'),
 
-    // File Loading
+    // File Loading & Custom Text Source
+    sourceModeFile: document.getElementById('source-mode-file'),
+    sourceModeText: document.getElementById('source-mode-text'),
+    sourceFilePanel: document.getElementById('source-file-panel'),
+    sourceTextPanel: document.getElementById('source-text-panel'),
     dropZone: document.getElementById('drop-zone'),
     fileInput: document.getElementById('file-input'),
     samplePicker: document.getElementById('sample-picker'),
+    customTextInput: document.getElementById('custom-text-input'),
+    customTextFont: document.getElementById('custom-text-font'),
+    customTextSize: document.getElementById('custom-text-size'),
+    customTextJustify: document.getElementById('custom-text-justify'),
+    btnTextBold: document.getElementById('btn-text-bold'),
+    btnTextItalic: document.getElementById('btn-text-italic'),
 
     // Laser & Speeds
     laserPower: document.getElementById('laser-power'),
@@ -187,7 +206,17 @@
       });
     }
 
-    // 2. Drop Zone & File Input
+    // 2. Source Mode Switcher (File / Sample vs Enter Text)
+    if (DOM.sourceModeFile && DOM.sourceModeText) {
+      DOM.sourceModeFile.addEventListener('click', () => {
+        setSourceMode('file');
+      });
+      DOM.sourceModeText.addEventListener('click', () => {
+        setSourceMode('text');
+      });
+    }
+
+    // Drop Zone & File Input
     DOM.dropZone.addEventListener('click', () => DOM.fileInput.click());
     DOM.fileInput.addEventListener('change', handleFileInput);
 
@@ -213,6 +242,68 @@
       loadSample(val);
       e.target.value = ''; // Reset select
     });
+
+    // Custom Text Controls
+    let textDebounceTimer = null;
+    const triggerTextRegen = (delay = 120) => {
+      if (textDebounceTimer) clearTimeout(textDebounceTimer);
+      textDebounceTimer = setTimeout(() => {
+        if (state.sourceMode === 'text') {
+          generateCustomTextDesign();
+        }
+      }, delay);
+    };
+
+    if (DOM.customTextInput) {
+      DOM.customTextInput.addEventListener('input', (e) => {
+        state.customText = e.target.value;
+        triggerTextRegen(120);
+      });
+    }
+
+    if (DOM.customTextFont) {
+      DOM.customTextFont.addEventListener('change', (e) => {
+        state.customTextFont = e.target.value;
+        triggerTextRegen(20);
+      });
+    }
+
+    if (DOM.customTextSize) {
+      const onTextSizeChange = (e) => {
+        const val = parseFloat(e.target.value);
+        if (val > 0) {
+          state.customTextSize = val;
+          triggerTextRegen(40);
+        }
+      };
+      DOM.customTextSize.addEventListener('input', onTextSizeChange);
+      DOM.customTextSize.addEventListener('change', onTextSizeChange);
+    }
+
+    if (DOM.customTextJustify) {
+      DOM.customTextJustify.addEventListener('change', (e) => {
+        state.customTextJustify = e.target.value;
+        triggerTextRegen(20);
+      });
+    }
+
+    if (DOM.btnTextBold) {
+      DOM.btnTextBold.addEventListener('click', () => {
+        state.customTextBold = !state.customTextBold;
+        DOM.btnTextBold.classList.toggle('active', state.customTextBold);
+        DOM.btnTextBold.setAttribute('aria-pressed', state.customTextBold);
+        triggerTextRegen(20);
+      });
+    }
+
+    if (DOM.btnTextItalic) {
+      DOM.btnTextItalic.addEventListener('click', () => {
+        state.customTextItalic = !state.customTextItalic;
+        DOM.btnTextItalic.classList.toggle('active', state.customTextItalic);
+        DOM.btnTextItalic.setAttribute('aria-pressed', state.customTextItalic);
+        triggerTextRegen(20);
+      });
+    }
 
     // 3. Laser Power, Max PWM & Speeds
     const updateLaserPowerDisplay = () => {
@@ -523,6 +614,7 @@
       state.targetHeight = state.targetHeight / 25.4;
       state.offsetX = Number((state.offsetX / 25.4).toFixed(3));
       state.offsetY = Number((state.offsetY / 25.4).toFixed(3));
+      state.customTextSize = Number((state.customTextSize / 25.4).toFixed(3));
       state.cutFeedrate = Math.max(1, Math.round(state.cutFeedrate / 25.4));
       state.rapidFeedrate = Math.max(1, Math.round(state.rapidFeedrate / 25.4));
       state.lineInterval = Number((state.lineInterval / 25.4).toFixed(3));
@@ -536,6 +628,7 @@
       state.targetHeight = state.targetHeight * 25.4;
       state.offsetX = Number((state.offsetX * 25.4).toFixed(2));
       state.offsetY = Number((state.offsetY * 25.4).toFixed(2));
+      state.customTextSize = Number((state.customTextSize * 25.4).toFixed(2));
       state.cutFeedrate = Math.round(state.cutFeedrate * 25.4);
       state.rapidFeedrate = Math.round(state.rapidFeedrate * 25.4);
       state.lineInterval = Number((state.lineInterval * 25.4).toFixed(2));
@@ -547,6 +640,7 @@
     DOM.dimHeight.value = Number(state.targetHeight).toFixed(isStandard ? 3 : 1);
     if (DOM.originOffsetX) DOM.originOffsetX.value = state.offsetX;
     if (DOM.originOffsetY) DOM.originOffsetY.value = state.offsetY;
+    if (DOM.customTextSize) DOM.customTextSize.value = state.customTextSize;
     DOM.cutFeedrate.value = state.cutFeedrate;
     DOM.rapidFeedrate.value = state.rapidFeedrate;
     DOM.lineInterval.value = state.lineInterval;
@@ -764,6 +858,107 @@
       processAndGenerate(true);
     };
     img.src = dataUrl;
+  }
+
+  function escapeXml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
+  function setSourceMode(mode) {
+    state.sourceMode = mode;
+    const isText = mode === 'text';
+
+    if (DOM.sourceModeFile) {
+      DOM.sourceModeFile.classList.toggle('active', !isText);
+      DOM.sourceModeFile.setAttribute('aria-pressed', !isText);
+    }
+    if (DOM.sourceModeText) {
+      DOM.sourceModeText.classList.toggle('active', isText);
+      DOM.sourceModeText.setAttribute('aria-pressed', isText);
+    }
+    if (DOM.sourceFilePanel) {
+      DOM.sourceFilePanel.style.display = isText ? 'none' : 'block';
+    }
+    if (DOM.sourceTextPanel) {
+      DOM.sourceTextPanel.style.display = isText ? 'flex' : 'none';
+    }
+
+    if (isText) {
+      generateCustomTextDesign();
+    }
+  }
+
+  function generateCustomTextDesign() {
+    resetSimulation();
+    const rawText = (DOM.customTextInput ? DOM.customTextInput.value : state.customText) || '';
+    state.customText = rawText;
+
+    const lines = rawText.split(/\r?\n/);
+    const nonEmptyCount = lines.filter(l => l.trim().length > 0).length;
+    if (nonEmptyCount === 0) return;
+
+    const fontFamily = state.customTextFont || 'Arial';
+    const fontWeight = state.customTextBold ? 'bold' : 'normal';
+    const fontStyle = state.customTextItalic ? 'italic' : 'normal';
+    const justify = state.customTextJustify || 'center';
+
+    // Convert user font size (in inches or mm) to 96 DPI SVG user units (px)
+    const sizeVal = Math.max(0.01, parseFloat(state.customTextSize) || 0.5);
+    const fontSizePx = state.units === 'standard' ? (sizeVal * 96) : (sizeVal * 96 / 25.4);
+
+    // Measure lines on an offscreen canvas to determine tight SVG document dimensions
+    const measureCanvas = document.createElement('canvas');
+    const mCtx = measureCanvas.getContext('2d');
+    mCtx.font = `${fontStyle} ${fontWeight} ${fontSizePx}px "${fontFamily}"`;
+
+    let maxLineWidth = fontSizePx * 0.5;
+    for (let i = 0; i < lines.length; i++) {
+      const w = mCtx.measureText(lines[i]).width;
+      if (w > maxLineWidth) maxLineWidth = w;
+    }
+
+    const lineHeight = fontSizePx * 1.25;
+    const pad = Math.max(4, Math.ceil(fontSizePx * 0.25));
+    const svgW = Math.ceil(maxLineWidth + pad * 2);
+    const svgH = Math.ceil(pad * 2 + fontSizePx + Math.max(0, lines.length - 1) * lineHeight + fontSizePx * 0.3);
+
+    let anchor = 'middle';
+    let textX = svgW / 2;
+    if (justify === 'left') {
+      anchor = 'start';
+      textX = pad;
+    } else if (justify === 'right') {
+      anchor = 'end';
+      textX = svgW - pad;
+    }
+
+    const escapedFont = escapeXml(fontFamily);
+    const textElements = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (!lines[i].trim()) continue;
+      const textY = pad + fontSizePx + i * lineHeight;
+      textElements.push(
+        `  <text x="${textX.toFixed(2)}" y="${textY.toFixed(2)}" font-family="${escapedFont}" font-size="${fontSizePx.toFixed(2)}" font-weight="${fontWeight}" font-style="${fontStyle}" text-anchor="${anchor}" xml:space="preserve" fill="#000000">${escapeXml(lines[i])}</text>`
+      );
+    }
+
+    const defsBlock = (fontFamily === 'Army Stencil' && SampleData.armyStencilFontCss)
+      ? `  <defs><style>${SampleData.armyStencilFontCss}</style></defs>\n`
+      : '';
+
+    const svgString = `<?xml version="1.0" encoding="UTF-8"?>\n` +
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgW} ${svgH}" width="${svgW}px" height="${svgH}px">\n` +
+      defsBlock +
+      textElements.join('\n') + `\n</svg>`;
+
+    state.fileName = 'custom_text';
+    DOM.fileStatusBadge.textContent = 'Custom Text';
+    loadSvgString(svgString);
   }
 
   function loadSample(key) {
@@ -1064,6 +1259,12 @@
   // Self-initialization
   initEvents();
   setTheme('default');
+
+  // Preload embedded offline Army Stencil font faces into browser memory
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load('400 16px "Army Stencil"').catch(() => {});
+    document.fonts.load('700 16px "Army Stencil"').catch(() => {});
+  }
 
   // Load default sample on launch so the user is immediately greeted with an active laser design
   loadSample('warning');

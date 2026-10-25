@@ -30,7 +30,9 @@ const GcodeGenerator = (function() {
       flipV = false,
       originAlign = 'center', // 'center' (default), 'bottom-left', 'top-left', 'bottom-right', 'top-right'
       offsetX = 0,
-      offsetY = 0
+      offsetY = 0,
+      fillSolid = false,
+      lineInterval = 0.008
     } = options;
 
     // 1. Determine reference center and dimensions for scaling
@@ -107,6 +109,10 @@ const GcodeGenerator = (function() {
       if (path.power !== undefined) {
         newPath.power = path.power;
       }
+      if (path.isFilled) {
+        newPath.isFilled = true;
+        newPath.fillGroupId = path.fillGroupId;
+      }
 
       transformedPaths.push(newPath);
     }
@@ -180,12 +186,21 @@ const GcodeGenerator = (function() {
       if (path.power !== undefined) {
         finalPath.power = path.power;
       }
+      if (path.isFilled) {
+        finalPath.isFilled = true;
+        finalPath.fillGroupId = path.fillGroupId;
+      }
 
       finalPaths.push(finalPath);
     }
 
+    let outputPaths = finalPaths;
+    if (fillSolid) {
+      outputPaths = expandSolidFills(finalPaths, lineInterval);
+    }
+
     return {
-      paths: finalPaths,
+      paths: outputPaths,
       bounds: {
         minX: finalMinX,
         minY: finalMinY,
@@ -199,6 +214,120 @@ const GcodeGenerator = (function() {
         y: shiftY
       }
     };
+  }
+
+  /**
+   * Convert filled SVG element loops into bidirectional horizontal laser scanlines
+   * using the Even-Odd interior rule across each element's fillGroupId.
+   */
+  function expandSolidFills(paths, lineInterval) {
+    const stepY = Math.max(1e-4, parseFloat(lineInterval) || 0.008);
+    const result = [];
+    const fillGroups = new Map();
+    const groupOrder = [];
+
+    for (const p of paths) {
+      if (!p || p.length < 2) continue;
+      if (!p.isFilled) {
+        result.push(p);
+      } else {
+        const gid = p.fillGroupId || 1;
+        if (!fillGroups.has(gid)) {
+          fillGroups.set(gid, []);
+          groupOrder.push(gid);
+        }
+        fillGroups.get(gid).push(p);
+      }
+    }
+
+    for (const gid of groupOrder) {
+      const loops = fillGroups.get(gid);
+      if (!loops || !loops.length) continue;
+
+      const groupPower = loops[0].power;
+      let gMinY = Infinity;
+      let gMaxY = -Infinity;
+
+      // Collect closed edge segments for all loops in this filled element
+      const segments = [];
+      for (const loop of loops) {
+        const n = loop.length;
+        if (n < 2) continue;
+        for (let i = 0; i < n; i++) {
+          const p1 = loop[i];
+          const p2 = (i + 1 < n) ? loop[i + 1] : loop[0];
+          if (p1.y < gMinY) gMinY = p1.y;
+          if (p1.y > gMaxY) gMaxY = p1.y;
+          if (Math.abs(p1.y - p2.y) > 1e-9) {
+            segments.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
+          }
+        }
+      }
+
+      if (!segments.length || gMinY >= gMaxY) continue;
+
+      const scanYs = [];
+      for (let y = gMaxY - stepY * 0.5; y >= gMinY; y -= stepY) {
+        scanYs.push(y);
+      }
+      if (scanYs.length === 0) {
+        scanYs.push((gMinY + gMaxY) * 0.5);
+      }
+
+      for (let rowIdx = 0; rowIdx < scanYs.length; rowIdx++) {
+        const y = scanYs[rowIdx];
+        const xInts = [];
+
+        for (let s = 0; s < segments.length; s++) {
+          const seg = segments[s];
+          if ((seg.y1 <= y && seg.y2 > y) || (seg.y2 <= y && seg.y1 > y)) {
+            const t = (y - seg.y1) / (seg.y2 - seg.y1);
+            xInts.push(seg.x1 + t * (seg.x2 - seg.x1));
+          }
+        }
+
+        if (xInts.length < 2) continue;
+        xInts.sort((a, b) => a - b);
+
+        const intervals = [];
+        for (let k = 0; k + 1 < xInts.length; k += 2) {
+          const x1 = xInts[k];
+          const x2 = xInts[k + 1];
+          if (x2 - x1 > 1e-5) {
+            intervals.push([x1, x2]);
+          }
+        }
+
+        if (rowIdx % 2 === 1) {
+          intervals.reverse();
+          for (let m = 0; m < intervals.length; m++) {
+            const [x1, x2] = intervals[m];
+            const scanPath = [
+              { x: x2, y, power: groupPower },
+              { x: x1, y, power: groupPower }
+            ];
+            if (groupPower !== undefined) scanPath.power = groupPower;
+            scanPath.isFillScanline = true;
+            scanPath.fillGroupId = gid;
+            result.push(scanPath);
+          }
+        } else {
+          for (let m = 0; m < intervals.length; m++) {
+            const [x1, x2] = intervals[m];
+            const scanPath = [
+              { x: x1, y, power: groupPower },
+              { x: x2, y, power: groupPower }
+            ];
+            if (groupPower !== undefined) scanPath.power = groupPower;
+            scanPath.isFillScanline = true;
+            scanPath.fillGroupId = gid;
+            result.push(scanPath);
+          }
+        }
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -233,15 +362,32 @@ const GcodeGenerator = (function() {
     const ordered = [];
 
     for (const key of sortedKeys) {
-      const remaining = powerGroups.get(key).slice();
+      const groupPaths = powerGroups.get(key);
+      const outlineRemaining = [];
+      const fillBlocksMap = new Map();
+      const fillBlocks = [];
 
-      while (remaining.length > 0) {
+      for (const p of groupPaths) {
+        if (p.isFillScanline) {
+          const gid = p.fillGroupId || 1;
+          if (!fillBlocksMap.has(gid)) {
+            const block = [];
+            fillBlocksMap.set(gid, block);
+            fillBlocks.push(block);
+          }
+          fillBlocksMap.get(gid).push(p);
+        } else {
+          outlineRemaining.push(p);
+        }
+      }
+
+      while (outlineRemaining.length > 0) {
         let bestIdx = 0;
         let bestDist = Infinity;
         let shouldReverse = false;
 
-        for (let i = 0; i < remaining.length; i++) {
-          const p = remaining[i];
+        for (let i = 0; i < outlineRemaining.length; i++) {
+          const p = outlineRemaining[i];
           const start = p[0];
           const end = p[p.length - 1];
 
@@ -260,12 +406,33 @@ const GcodeGenerator = (function() {
           }
         }
 
-        const chosen = remaining.splice(bestIdx, 1)[0];
+        const chosen = outlineRemaining.splice(bestIdx, 1)[0];
         if (shouldReverse) {
           chosen.reverse();
         }
         ordered.push(chosen);
         currentPos = chosen[chosen.length - 1];
+      }
+
+      // Append filled scanline blocks in nearest-neighbor block order without scrambling internal scanlines
+      while (fillBlocks.length > 0) {
+        let bestBlockIdx = 0;
+        let bestBlockDist = Infinity;
+        for (let b = 0; b < fillBlocks.length; b++) {
+          const firstScan = fillBlocks[b][0];
+          const startPt = firstScan[0];
+          const d = Math.hypot(startPt.x - currentPos.x, startPt.y - currentPos.y);
+          if (d < bestBlockDist) {
+            bestBlockDist = d;
+            bestBlockIdx = b;
+          }
+        }
+        const chosenBlock = fillBlocks.splice(bestBlockIdx, 1)[0];
+        for (let s = 0; s < chosenBlock.length; s++) {
+          ordered.push(chosenBlock[s]);
+        }
+        const lastScan = chosenBlock[chosenBlock.length - 1];
+        currentPos = lastScan[lastScan.length - 1];
       }
     }
 

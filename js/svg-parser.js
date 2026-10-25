@@ -822,6 +822,51 @@ const SVGParser = (function() {
     return result;
   }
 
+  let nextFillGroupId = 1;
+
+  /**
+   * Determine if an SVG element has a non-transparent fill
+   */
+  function hasNonTransparentFill(elem) {
+    if (!elem || elem.nodeType !== 1) return false;
+    const tag = elem.tagName ? elem.tagName.toLowerCase() : '';
+    if (tag === 'line') return false;
+
+    const rawFill = getInheritedStyleOrAttr(elem, 'fill', '');
+    if (rawFill) {
+      const rf = rawFill.toLowerCase().trim();
+      if (rf === 'none' || rf === 'transparent' || rf === 'rgba(0,0,0,0)' || rf === 'rgba(0, 0, 0, 0)') {
+        return false;
+      }
+    } else if (tag === 'polyline') {
+      return false;
+    }
+
+    const rawFillOpacity = getInheritedStyleOrAttr(elem, 'fill-opacity', '');
+    if (rawFillOpacity !== '' && parseFloat(rawFillOpacity) <= 0) return false;
+
+    const rawOpacity = getInheritedStyleOrAttr(elem, 'opacity', '');
+    if (rawOpacity !== '' && parseFloat(rawOpacity) <= 0) return false;
+
+    if (typeof window !== 'undefined' && window.getComputedStyle && elem.isConnected) {
+      const cs = window.getComputedStyle(elem);
+      if (cs) {
+        const cf = (cs.fill || '').toLowerCase().trim();
+        if (cf === 'none' || cf === 'transparent' || cf === 'rgba(0, 0, 0, 0)' || cf === 'rgba(0,0,0,0)') {
+          return false;
+        }
+        if (cs.fillOpacity !== undefined && cs.fillOpacity !== '' && parseFloat(cs.fillOpacity) <= 0) {
+          return false;
+        }
+        if (cs.opacity !== undefined && cs.opacity !== '' && parseFloat(cs.opacity) <= 0) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
   /**
    * Traverse SVG element tree and collect all vector strokes
    */
@@ -842,7 +887,10 @@ const SVGParser = (function() {
       ? parseFloat(powerAttr)
       : inheritedPower;
 
-    function addSubpaths(subpaths, overridePower = currentPower) {
+    const elemIsFilled = hasNonTransparentFill(elem);
+    const elemFillGroupId = elemIsFilled ? (nextFillGroupId++) : 0;
+
+    function addSubpaths(subpaths, overridePower = currentPower, isFilledOverride = elemIsFilled, groupIdOverride = elemFillGroupId) {
       for (const sp of subpaths) {
         if (!sp || sp.length < 2) continue;
         const transformedPath = sp.map(pt => {
@@ -851,6 +899,10 @@ const SVGParser = (function() {
           return tpt;
         });
         if (overridePower !== undefined) transformedPath.power = overridePower;
+        if (isFilledOverride) {
+          transformedPath.isFilled = true;
+          transformedPath.fillGroupId = groupIdOverride;
+        }
         paths.push(transformedPath);
       }
     }
@@ -924,6 +976,11 @@ const SVGParser = (function() {
           circlePts.cx = center.x;
           circlePts.cy = center.y;
           circlePts.r = scaledR;
+          if (currentPower !== undefined) circlePts.power = currentPower;
+          if (elemIsFilled) {
+            circlePts.isFilled = true;
+            circlePts.fillGroupId = elemFillGroupId;
+          }
           paths.push(circlePts);
         }
         break;
@@ -1049,6 +1106,9 @@ const SVGParser = (function() {
             svgTextLength
           });
 
+          const textIsFilled = hasNonTransparentFill(targetEl);
+          const textGroupId = textIsFilled ? (nextFillGroupId++) : 0;
+
           for (const sp of textSubpaths) {
             if (!sp || sp.length < 2) continue;
             const transformedPath = sp.map(pt => {
@@ -1057,6 +1117,10 @@ const SVGParser = (function() {
               return tpt;
             });
             if (powerVal !== undefined) transformedPath.power = powerVal;
+            if (textIsFilled) {
+              transformedPath.isFilled = true;
+              transformedPath.fillGroupId = textGroupId;
+            }
             paths.push(transformedPath);
           }
         }

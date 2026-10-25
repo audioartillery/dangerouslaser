@@ -21,6 +21,7 @@
     customTextJustify: 'center', // 'left', 'center', 'right'
     customTextBold: false,
     customTextItalic: false,
+    svgFillSolid: false,
 
     // Raw loaded data
     svgString: null,
@@ -94,6 +95,8 @@
     customTextJustify: document.getElementById('custom-text-justify'),
     btnTextBold: document.getElementById('btn-text-bold'),
     btnTextItalic: document.getElementById('btn-text-italic'),
+    svgFillOptionRow: document.getElementById('svg-fill-option-row'),
+    svgFillSolid: document.getElementById('svg-fill-solid'),
 
     // Laser & Speeds
     laserPower: document.getElementById('laser-power'),
@@ -302,6 +305,14 @@
         DOM.btnTextItalic.classList.toggle('active', state.customTextItalic);
         DOM.btnTextItalic.setAttribute('aria-pressed', state.customTextItalic);
         triggerTextRegen(20);
+      });
+    }
+
+    if (DOM.svgFillSolid) {
+      DOM.svgFillSolid.checked = state.svgFillSolid;
+      DOM.svgFillSolid.addEventListener('change', (e) => {
+        state.svgFillSolid = e.target.checked;
+        triggerUpdate(20);
       });
     }
 
@@ -810,11 +821,13 @@
 
         state.rasterImg = offCanvas;
         DOM.rasterOptionsSection.style.display = 'none';
+        if (DOM.svgFillOptionRow) DOM.svgFillOptionRow.style.display = 'flex';
         processAndGenerate(true);
       };
       img.src = url;
 
       DOM.rasterOptionsSection.style.display = 'none';
+      if (DOM.svgFillOptionRow) DOM.svgFillOptionRow.style.display = 'flex';
       processAndGenerate(true);
     } catch (err) {
       alert('Error parsing SVG file: ' + err.message);
@@ -855,6 +868,7 @@
       DOM.dimHeight.value = Number(state.targetHeight).toFixed(state.units === 'standard' ? 3 : 1);
 
       DOM.rasterOptionsSection.style.display = 'block';
+      if (DOM.svgFillOptionRow) DOM.svgFillOptionRow.style.display = 'none';
       processAndGenerate(true);
     };
     img.src = dataUrl;
@@ -1055,7 +1069,7 @@
       docH = state.targetHeight;
     }
 
-    // 2. Apply Geometric Transformations (Scale, Rotate, Flip, Origin Align, Offsets)
+    // 2. Apply Geometric Transformations (Scale, Rotate, Flip, Origin Align, Offsets, SVG Solid Fill)
     const transformed = GcodeGenerator.transformPaths(rawPaths, {
       targetWidth: state.targetWidth,
       targetHeight: state.targetHeight,
@@ -1066,7 +1080,9 @@
       flipV: state.flipV,
       originAlign: state.originAlign,
       offsetX: state.offsetX,
-      offsetY: state.offsetY
+      offsetY: state.offsetY,
+      fillSolid: state.fileType === 'svg' && state.svgFillSolid,
+      lineInterval: state.lineInterval
     });
 
     state.transformedPaths = transformed.paths;

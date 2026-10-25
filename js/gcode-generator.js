@@ -218,7 +218,8 @@ const GcodeGenerator = (function() {
 
   /**
    * Convert filled SVG element loops into bidirectional horizontal laser scanlines
-   * using the Even-Odd interior rule across each element's fillGroupId.
+   * using the Even-Odd interior rule across each element's fillGroupId, while preserving
+   * the outer/interior boundary stroke contours.
    */
   function expandSolidFills(paths, lineInterval) {
     const stepY = Math.max(1e-4, parseFloat(lineInterval) || 0.008);
@@ -228,9 +229,10 @@ const GcodeGenerator = (function() {
 
     for (const p of paths) {
       if (!p || p.length < 2) continue;
-      if (!p.isFilled) {
-        result.push(p);
-      } else {
+      // Keep all paths (outlines/strokes)
+      result.push(p);
+
+      if (p.isFilled) {
         const gid = p.fillGroupId || 1;
         if (!fillGroups.has(gid)) {
           fillGroups.set(gid, []);

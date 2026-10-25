@@ -97,6 +97,7 @@
     btnTextItalic: document.getElementById('btn-text-italic'),
     svgFillOptionRow: document.getElementById('svg-fill-option-row'),
     svgFillSolid: document.getElementById('svg-fill-solid'),
+    svgFillInterval: document.getElementById('svg-fill-interval'),
 
     // Laser & Speeds
     laserPower: document.getElementById('laser-power'),
@@ -318,6 +319,25 @@
       DOM.svgFillSolid.addEventListener('input', onSvgFillChange);
     }
 
+    const syncLineIntervalInputs = (val) => {
+      const parsed = parseFloat(val);
+      if (isNaN(parsed) || parsed <= 0) return;
+      state.lineInterval = Math.max(0.001, parsed);
+      if (DOM.lineInterval && DOM.lineInterval.value !== String(state.lineInterval)) {
+        DOM.lineInterval.value = state.lineInterval;
+      }
+      if (DOM.svgFillInterval && DOM.svgFillInterval.value !== String(state.lineInterval)) {
+        DOM.svgFillInterval.value = state.lineInterval;
+      }
+      triggerUpdate(20);
+    };
+
+    if (DOM.svgFillInterval) {
+      DOM.svgFillInterval.value = state.lineInterval;
+      DOM.svgFillInterval.addEventListener('change', (e) => syncLineIntervalInputs(e.target.value));
+      DOM.svgFillInterval.addEventListener('input', (e) => syncLineIntervalInputs(e.target.value));
+    }
+
     // 3. Laser Power, Max PWM & Speeds
     const updateLaserPowerDisplay = () => {
       const effectiveS = Math.round((state.laserPower / 100) * state.maxPwm);
@@ -472,10 +492,8 @@
     });
 
     DOM.lineInterval.value = state.lineInterval;
-    DOM.lineInterval.addEventListener('change', (e) => {
-      state.lineInterval = Math.max(0.001, parseFloat(e.target.value) || 0.008);
-      triggerUpdate(20);
-    });
+    DOM.lineInterval.addEventListener('change', (e) => syncLineIntervalInputs(e.target.value));
+    DOM.lineInterval.addEventListener('input', (e) => syncLineIntervalInputs(e.target.value));
 
     DOM.rasterBidirectional.addEventListener('change', (e) => {
       state.bidirectional = e.target.checked;
@@ -657,6 +675,7 @@
     DOM.cutFeedrate.value = state.cutFeedrate;
     DOM.rapidFeedrate.value = state.rapidFeedrate;
     DOM.lineInterval.value = state.lineInterval;
+    if (DOM.svgFillInterval) DOM.svgFillInterval.value = state.lineInterval;
     DOM.gcodePrefix.value = state.prefixGcode;
 
     viewer.units = newUnits;

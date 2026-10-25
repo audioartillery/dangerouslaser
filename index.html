@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dangerous Laser - CNC Laser G-Code Generator</title>
-  <link rel="stylesheet" href="css/style.css?v=2">
+  <link rel="stylesheet" href="css/style.css?v=3">
 </head>
 <body>
   <div id="app-container">
@@ -182,12 +182,18 @@
               </div>
             </div>
 
-            <div class="field-row checkbox-row" id="svg-fill-option-row" style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
-              <label class="toggle-checkbox">
-                <input type="checkbox" id="svg-fill-solid">
-                <span class="checkmark"></span>
-                <span>Laser Fill Solid SVG Elements</span>
-              </label>
+            <div class="field-group" id="svg-fill-option-row" style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-subtle); gap: 8px;">
+              <div class="field-row checkbox-row">
+                <label class="toggle-checkbox">
+                  <input type="checkbox" id="svg-fill-solid">
+                  <span class="checkmark"></span>
+                  <span>Laser Fill Solid SVG Elements</span>
+                </label>
+              </div>
+              <div class="field-row" id="svg-fill-interval-row">
+                <label for="svg-fill-interval">Stepover / Line Spacing (<span class="unit-dim-label">in</span>):</label>
+                <input type="number" id="svg-fill-interval" value="0.008" min="0.001" max="1" step="0.001" class="control-input">
+              </div>
             </div>
           </section>
 
@@ -588,11 +594,11 @@
   </div>
 
   <!-- Scripts (Plain JS for 100% offline file:// compatibility without CORS or web server) -->
-  <script src="js/raster-engine.js?v=2"></script>
-  <script src="js/svg-parser.js?v=2"></script>
-  <script src="js/gcode-generator.js?v=2"></script>
-  <script src="js/canvas-viewer.js?v=2"></script>
-  <script src="js/sample-data.js?v=2"></script>
-  <script src="js/app.js?v=2"></script>
+  <script src="js/raster-engine.js?v=3"></script>
+  <script src="js/svg-parser.js?v=3"></script>
+  <script src="js/gcode-generator.js?v=3"></script>
+  <script src="js/canvas-viewer.js?v=3"></script>
+  <script src="js/sample-data.js?v=3"></script>
+  <script src="js/app.js?v=3"></script>
 </body>
 </html>

@@ -468,6 +468,7 @@ html, body {
   align-items: center;
 }
 .toggle-checkbox {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -477,7 +478,11 @@ html, body {
   user-select: none;
 }
 .toggle-checkbox input {
-  display: none;
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }
 .checkmark {
   width: 16px;

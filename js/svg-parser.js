@@ -700,7 +700,7 @@ const SVGParser = (function() {
         if (val !== null && val !== '') return val.trim();
       }
       if (cur.tagName && cur.tagName.toLowerCase() === 'svg') break;
-      cur = cur.parentElement;
+      cur = cur.parentElement || (cur.parentNode && cur.parentNode.nodeType === 1 ? cur.parentNode : null);
     }
     return defaultVal;
   }
@@ -717,8 +717,6 @@ const SVGParser = (function() {
       fontFamily = 'sans-serif',
       fontWeight = 'normal',
       fontStyle = 'normal',
-      fontVariant = 'normal',
-      fontStretch = '',
       letterSpacing = 0,
       textAnchor = 'start',
       svgStartPos = null,
@@ -734,9 +732,9 @@ const SVGParser = (function() {
 
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const variantPart = (fontVariant && fontVariant !== 'normal') ? `${fontVariant} ` : '';
-    const stretchPart = (fontStretch && fontStretch !== 'normal' && fontStretch !== '100%') ? `${fontStretch} ` : '';
-    const fontSpec = `${fontStyle} ${variantPart}${fontWeight} ${stretchPart}${renderFontSize}px ${fontFamily}`;
+    const safeStyle = (fontStyle === 'italic' || fontStyle === 'oblique') ? fontStyle : 'normal';
+    const safeWeight = fontWeight ? String(fontWeight).trim() : 'normal';
+    const fontSpec = `${safeStyle} ${safeWeight} ${renderFontSize}px ${fontFamily || 'sans-serif'}`;
 
     ctx.font = fontSpec;
     if (letterSpacing && 'letterSpacing' in ctx) {
@@ -832,23 +830,29 @@ const SVGParser = (function() {
     const tag = elem.tagName ? elem.tagName.toLowerCase() : '';
     if (tag === 'line') return false;
 
-    const rawFill = getInheritedStyleOrAttr(elem, 'fill', '');
-    if (rawFill) {
-      const rf = rawFill.toLowerCase().trim();
-      if (rf === 'none' || rf === 'transparent' || rf === 'rgba(0,0,0,0)' || rf === 'rgba(0, 0, 0, 0)') {
-        return false;
-      }
-    } else if (tag === 'polyline') {
-      return false;
-    }
-
     const rawFillOpacity = getInheritedStyleOrAttr(elem, 'fill-opacity', '');
     if (rawFillOpacity !== '' && parseFloat(rawFillOpacity) <= 0) return false;
 
     const rawOpacity = getInheritedStyleOrAttr(elem, 'opacity', '');
     if (rawOpacity !== '' && parseFloat(rawOpacity) <= 0) return false;
 
-    if (typeof window !== 'undefined' && window.getComputedStyle && elem.isConnected) {
+    const rawFill = getInheritedStyleOrAttr(elem, 'fill', '');
+    if (rawFill) {
+      const rf = rawFill.toLowerCase().trim();
+      if (rf === 'none' || rf === 'transparent' || rf === 'rgba(0,0,0,0)' || rf === 'rgba(0, 0, 0, 0)') {
+        return false;
+      }
+      return true;
+    }
+
+    if (tag === 'polyline') {
+      return false;
+    }
+
+    // Only consult getComputedStyle if the SVG contains a <style> stylesheet and no inline/attr fill was set
+    const ownerDoc = elem.ownerDocument;
+    const hasStyleTag = ownerDoc && ownerDoc.querySelector && ownerDoc.querySelector('style');
+    if (hasStyleTag && typeof window !== 'undefined' && window.getComputedStyle && elem.isConnected) {
       const cs = window.getComputedStyle(elem);
       if (cs) {
         const cf = (cs.fill || '').toLowerCase().trim();
@@ -873,6 +877,11 @@ const SVGParser = (function() {
   function extractPathsFromElement(elem, parentMatrix, paths, inheritedPower = undefined) {
     if (!elem || elem.nodeType !== 1) return;
 
+    const tagName = elem.tagName ? elem.tagName.toLowerCase() : '';
+    if (['defs', 'style', 'metadata', 'title', 'desc', 'clippath', 'mask', 'pattern', 'lineargradient', 'radialgradient', 'symbol', 'marker'].includes(tagName)) {
+      return;
+    }
+
     // Check display or visibility
     const style = elem.getAttribute('style') || '';
     if (style.includes('display:none') || style.includes('visibility:hidden')) return;
@@ -880,7 +889,6 @@ const SVGParser = (function() {
 
     const elemTransform = parseTransform(elem.getAttribute('transform'));
     const currentMatrix = Matrix.multiply(parentMatrix, elemTransform);
-    const tagName = elem.tagName.toLowerCase();
 
     const powerAttr = elem.getAttribute('data-power');
     const currentPower = (powerAttr !== null && powerAttr !== '' && !isNaN(parseFloat(powerAttr)))
@@ -1043,22 +1051,22 @@ const SVGParser = (function() {
           const x = parseLength(xAttr, 0) + parseLength(dxAttr, 0);
           const y = parseLength(yAttr, 0) + parseLength(dyAttr, 0);
 
-          let fontSize = (cs && cs.fontSize && !isNaN(parseFloat(cs.fontSize)))
-            ? parseFloat(cs.fontSize)
-            : parseLength(getInheritedStyleOrAttr(targetEl, 'font-size', '16'), 16);
+          const rawFontSize = getInheritedStyleOrAttr(targetEl, 'font-size', '');
+          let fontSize = rawFontSize
+            ? parseLength(rawFontSize, 16)
+            : ((cs && cs.fontSize && !isNaN(parseFloat(cs.fontSize))) ? parseFloat(cs.fontSize) : 16);
 
-          const fontFamily = (cs && cs.fontFamily) || getInheritedStyleOrAttr(targetEl, 'font-family', 'sans-serif');
-          const fontWeight = (cs && cs.fontWeight) || getInheritedStyleOrAttr(targetEl, 'font-weight', 'normal');
-          const fontStyle = (cs && cs.fontStyle) || getInheritedStyleOrAttr(targetEl, 'font-style', 'normal');
-          const fontVariant = (cs && cs.fontVariant) || getInheritedStyleOrAttr(targetEl, 'font-variant', 'normal');
-          const fontStretch = (cs && cs.fontStretch) || getInheritedStyleOrAttr(targetEl, 'font-stretch', 'normal');
-          const textAnchor = (cs && cs.textAnchor) || getInheritedStyleOrAttr(targetEl, 'text-anchor', 'start');
+          const fontFamily = getInheritedStyleOrAttr(targetEl, 'font-family', '') || (cs && cs.fontFamily) || 'sans-serif';
+          const fontWeight = getInheritedStyleOrAttr(targetEl, 'font-weight', '') || (cs && cs.fontWeight) || 'normal';
+          const fontStyle = getInheritedStyleOrAttr(targetEl, 'font-style', '') || (cs && cs.fontStyle) || 'normal';
+          const textAnchor = getInheritedStyleOrAttr(targetEl, 'text-anchor', '') || (cs && cs.textAnchor) || 'start';
 
           let letterSpacing = 0;
-          if (cs && cs.letterSpacing && cs.letterSpacing !== 'normal') {
+          const rawLetterSpacing = getInheritedStyleOrAttr(targetEl, 'letter-spacing', '');
+          if (rawLetterSpacing && rawLetterSpacing !== 'normal') {
+            letterSpacing = parseLength(rawLetterSpacing, 0);
+          } else if (cs && cs.letterSpacing && cs.letterSpacing !== 'normal') {
             letterSpacing = parseFloat(cs.letterSpacing) || 0;
-          } else {
-            letterSpacing = parseLength(getInheritedStyleOrAttr(targetEl, 'letter-spacing', '0'), 0);
           }
 
           let svgStartPos = null;
@@ -1098,8 +1106,6 @@ const SVGParser = (function() {
             fontFamily,
             fontWeight,
             fontStyle,
-            fontVariant,
-            fontStretch,
             letterSpacing,
             textAnchor,
             svgStartPos,
@@ -1197,13 +1203,15 @@ const SVGParser = (function() {
     const paths = [];
     let hostDiv = null;
     try {
+      let targetRoot = svgElem;
       if (typeof document !== 'undefined' && document.body) {
         hostDiv = document.createElement('div');
-        hostDiv.style.cssText = `position:fixed;left:-99999px;top:-99999px;width:${width}px;height:${height}px;overflow:hidden;visibility:hidden;pointer-events:none;font:initial;`;
-        hostDiv.appendChild(svgElem);
+        hostDiv.style.cssText = `position:fixed;left:-99999px;top:-99999px;width:${width}px;height:${height}px;overflow:hidden;opacity:0;pointer-events:none;font-family:serif;font-size:16px;font-weight:normal;font-style:normal;`;
+        targetRoot = document.importNode ? document.importNode(svgElem, true) : svgElem;
+        hostDiv.appendChild(targetRoot);
         document.body.appendChild(hostDiv);
       }
-      extractPathsFromElement(svgElem, rootMatrix, paths);
+      extractPathsFromElement(targetRoot, rootMatrix, paths);
     } finally {
       if (hostDiv && hostDiv.parentNode) {
         hostDiv.parentNode.removeChild(hostDiv);

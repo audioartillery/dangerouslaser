@@ -310,10 +310,12 @@
 
     if (DOM.svgFillSolid) {
       DOM.svgFillSolid.checked = state.svgFillSolid;
-      DOM.svgFillSolid.addEventListener('change', (e) => {
-        state.svgFillSolid = e.target.checked;
+      const onSvgFillChange = (e) => {
+        state.svgFillSolid = Boolean(e.target.checked);
         triggerUpdate(20);
-      });
+      };
+      DOM.svgFillSolid.addEventListener('change', onSvgFillChange);
+      DOM.svgFillSolid.addEventListener('input', onSvgFillChange);
     }
 
     // 3. Laser Power, Max PWM & Speeds
@@ -1002,6 +1004,9 @@
    */
   function processAndGenerate(autoFit = false) {
     if (!state.fileType) return;
+    if (DOM.svgFillSolid) {
+      state.svgFillSolid = Boolean(DOM.svgFillSolid.checked);
+    }
 
     let rawPaths = [];
     let isVariablePower = false;

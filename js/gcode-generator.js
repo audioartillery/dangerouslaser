@@ -268,12 +268,17 @@ const GcodeGenerator = (function() {
 
       if (!segments.length || gMinY >= gMaxY) continue;
 
+      // Inset top and bottom by stepY so scanlines terminate inside the shape by line spacing
+      const insetMinY = gMinY + stepY;
+      const insetMaxY = gMaxY - stepY;
+      if (insetMinY > insetMaxY) continue;
+
       const scanYs = [];
-      for (let y = gMaxY - stepY * 0.5; y >= gMinY; y -= stepY) {
+      for (let y = insetMaxY; y >= insetMinY - 1e-6; y -= stepY) {
         scanYs.push(y);
       }
       if (scanYs.length === 0) {
-        scanYs.push((gMinY + gMaxY) * 0.5);
+        scanYs.push((insetMinY + insetMaxY) * 0.5);
       }
 
       for (let rowIdx = 0; rowIdx < scanYs.length; rowIdx++) {
@@ -293,8 +298,9 @@ const GcodeGenerator = (function() {
 
         const intervals = [];
         for (let k = 0; k + 1 < xInts.length; k += 2) {
-          const x1 = xInts[k];
-          const x2 = xInts[k + 1];
+          // Terminate inside the shape by line spacing (stepY) on both ends
+          const x1 = xInts[k] + stepY;
+          const x2 = xInts[k + 1] - stepY;
           if (x2 - x1 > 1e-5) {
             intervals.push([x1, x2]);
           }

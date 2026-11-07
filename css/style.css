@@ -869,6 +869,9 @@ html, body {
 .gcode-actions {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
 }
 .btn-action {
   background: var(--bg-elevated);

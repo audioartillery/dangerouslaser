@@ -24,22 +24,23 @@ const RasterEngine = (function() {
       thresholdVal = 128 // 0 to 255
     } = options;
 
+    const width = Math.max(1, Math.round(targetWidthPx) || 100);
+    const height = Math.max(1, Math.round(targetHeightPx) || 100);
+
     const canvas = document.createElement('canvas');
-    canvas.width = targetWidthPx;
-    canvas.height = targetHeightPx;
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
     // Fill white background (handles transparent PNGs)
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, targetWidthPx, targetHeightPx);
+    ctx.fillRect(0, 0, width, height);
 
     // Draw image scaled
-    ctx.drawImage(img, 0, 0, targetWidthPx, targetHeightPx);
+    ctx.drawImage(img, 0, 0, width, height);
 
-    const imgData = ctx.getImageData(0, 0, targetWidthPx, targetHeightPx);
+    const imgData = ctx.getImageData(0, 0, width, height);
     const data = imgData.data;
-    const width = targetWidthPx;
-    const height = targetHeightPx;
 
     // 1. Grayscale, Brightness, Contrast, Invert
     // Contrast factor: F = (259 * (C + 255)) / (255 * (259 - C))

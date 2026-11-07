@@ -47,6 +47,14 @@
     offsetX: 0,
     offsetY: 0,
 
+    // Bounding Box / Circle Trace
+    boundsType: 'none',          // 'none', 'box', 'circle'
+    boundsBoxWidth: 4.4,         // in current units
+    boundsBoxLength: 4.4,        // in current units
+    boundsCircleDiameter: 4.4,   // in current units
+    boundsCustomBox: false,      // true if user typed custom dimensions
+    boundsCustomCircle: false,
+
     // Laser & Feeds (default standard in/min)
     laserPower: 100,    // 1 to 100 (%)
     maxPwm: 100,        // Max PWM S value (100 default, user configurable)
@@ -114,7 +122,7 @@
     lockAspect: document.getElementById('lock-aspect'),
     scalePercent: document.getElementById('scale-percent'),
     scalePercentVal: document.getElementById('scale-percent-val'),
-    scaleChips: document.querySelectorAll('.btn-chip'),
+    scaleChips: document.querySelectorAll('.quick-scale-buttons .btn-chip, .btn-chip[data-scale]'),
     unitDimLabels: document.querySelectorAll('.unit-dim-label'),
 
     // Transform
@@ -129,6 +137,20 @@
     originAlign: document.getElementById('origin-align'),
     originOffsetX: document.getElementById('origin-offset-x'),
     originOffsetY: document.getElementById('origin-offset-y'),
+
+    // Bounding Box / Circle Trace
+    boundsType: document.getElementById('bounds-type'),
+    boundsBoxFields: document.getElementById('bounds-box-fields'),
+    boundsBoxWidth: document.getElementById('bounds-box-width'),
+    boundsBoxLength: document.getElementById('bounds-box-length'),
+    boundsBoxReset: document.getElementById('btn-bounds-box-reset'),
+    boundsCircleFields: document.getElementById('bounds-circle-fields'),
+    boundsCircleDiameter: document.getElementById('bounds-circle-diameter'),
+    boundsCircleReset: document.getElementById('btn-bounds-circle-reset'),
+    boundsActionRow: document.getElementById('bounds-action-row'),
+    btnBoundsDownloadTrace: document.getElementById('btn-bounds-download-trace'),
+    btnDownloadBounds: document.getElementById('btn-download-bounds'),
+    toggleLayerBounds: document.getElementById('toggle-layer-bounds'),
 
     // Raster Section
     rasterOptionsSection: document.getElementById('raster-options-section'),
@@ -419,6 +441,7 @@
 
     DOM.scaleChips.forEach(chip => {
       chip.addEventListener('click', () => {
+        if (!chip.dataset.scale) return;
         DOM.scaleChips.forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
         const p = parseInt(chip.dataset.scale, 10);
@@ -482,6 +505,81 @@
       };
       DOM.originOffsetY.addEventListener('input', onOffsetY);
       DOM.originOffsetY.addEventListener('change', onOffsetY);
+    }
+
+    // Bounding Box / Circle Trace Controls
+    if (DOM.boundsType) {
+      DOM.boundsType.value = state.boundsType;
+      DOM.boundsType.addEventListener('change', (e) => {
+        state.boundsType = e.target.value;
+        const isBox = state.boundsType === 'box';
+        const isCircle = state.boundsType === 'circle';
+        if (DOM.boundsBoxFields) DOM.boundsBoxFields.style.display = isBox ? 'block' : 'none';
+        if (DOM.boundsCircleFields) DOM.boundsCircleFields.style.display = isCircle ? 'block' : 'none';
+        if (DOM.boundsActionRow) DOM.boundsActionRow.style.display = (isBox || isCircle) ? 'block' : 'none';
+        triggerUpdate(10);
+      });
+    }
+
+    if (DOM.boundsBoxWidth) {
+      DOM.boundsBoxWidth.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        if (val > 0) {
+          state.boundsCustomBox = true;
+          state.boundsBoxWidth = val;
+          triggerUpdate(40);
+        }
+      });
+    }
+
+    if (DOM.boundsBoxLength) {
+      DOM.boundsBoxLength.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        if (val > 0) {
+          state.boundsCustomBox = true;
+          state.boundsBoxLength = val;
+          triggerUpdate(40);
+        }
+      });
+    }
+
+    if (DOM.boundsCircleDiameter) {
+      DOM.boundsCircleDiameter.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        if (val > 0) {
+          state.boundsCustomCircle = true;
+          state.boundsCircleDiameter = val;
+          triggerUpdate(40);
+        }
+      });
+    }
+
+    if (DOM.boundsBoxReset) {
+      DOM.boundsBoxReset.addEventListener('click', () => {
+        state.boundsCustomBox = false;
+        processAndGenerate();
+      });
+    }
+
+    if (DOM.boundsCircleReset) {
+      DOM.boundsCircleReset.addEventListener('click', () => {
+        state.boundsCustomCircle = false;
+        processAndGenerate();
+      });
+    }
+
+    if (DOM.btnDownloadBounds) {
+      DOM.btnDownloadBounds.addEventListener('click', downloadBoundsTraceFile);
+    }
+
+    if (DOM.btnBoundsDownloadTrace) {
+      DOM.btnBoundsDownloadTrace.addEventListener('click', downloadBoundsTraceFile);
+    }
+
+    if (DOM.toggleLayerBounds) {
+      DOM.toggleLayerBounds.addEventListener('change', (e) => {
+        viewer.setBoundsVisibility(e.target.checked);
+      });
     }
 
     // 6. Raster Controls
@@ -645,6 +743,9 @@
       state.targetHeight = state.targetHeight / 25.4;
       state.offsetX = Number((state.offsetX / 25.4).toFixed(3));
       state.offsetY = Number((state.offsetY / 25.4).toFixed(3));
+      state.boundsBoxWidth = Number((state.boundsBoxWidth / 25.4).toFixed(3));
+      state.boundsBoxLength = Number((state.boundsBoxLength / 25.4).toFixed(3));
+      state.boundsCircleDiameter = Number((state.boundsCircleDiameter / 25.4).toFixed(3));
       state.customTextSize = Number((state.customTextSize / 25.4).toFixed(3));
       state.cutFeedrate = Math.max(1, Math.round(state.cutFeedrate / 25.4));
       state.rapidFeedrate = Math.max(1, Math.round(state.rapidFeedrate / 25.4));
@@ -659,6 +760,9 @@
       state.targetHeight = state.targetHeight * 25.4;
       state.offsetX = Number((state.offsetX * 25.4).toFixed(2));
       state.offsetY = Number((state.offsetY * 25.4).toFixed(2));
+      state.boundsBoxWidth = Number((state.boundsBoxWidth * 25.4).toFixed(1));
+      state.boundsBoxLength = Number((state.boundsBoxLength * 25.4).toFixed(1));
+      state.boundsCircleDiameter = Number((state.boundsCircleDiameter * 25.4).toFixed(1));
       state.customTextSize = Number((state.customTextSize * 25.4).toFixed(2));
       state.cutFeedrate = Math.round(state.cutFeedrate * 25.4);
       state.rapidFeedrate = Math.round(state.rapidFeedrate * 25.4);
@@ -671,6 +775,9 @@
     DOM.dimHeight.value = Number(state.targetHeight).toFixed(isStandard ? 3 : 1);
     if (DOM.originOffsetX) DOM.originOffsetX.value = state.offsetX;
     if (DOM.originOffsetY) DOM.originOffsetY.value = state.offsetY;
+    if (DOM.boundsBoxWidth) DOM.boundsBoxWidth.value = state.boundsBoxWidth;
+    if (DOM.boundsBoxLength) DOM.boundsBoxLength.value = state.boundsBoxLength;
+    if (DOM.boundsCircleDiameter) DOM.boundsCircleDiameter.value = state.boundsCircleDiameter;
     if (DOM.customTextSize) DOM.customTextSize.value = state.customTextSize;
     DOM.cutFeedrate.value = state.cutFeedrate;
     DOM.rapidFeedrate.value = state.rapidFeedrate;
@@ -792,6 +899,8 @@
       state.fileType = 'svg';
       state.svgString = svgText;
       state.rawSvgData = parsed;
+      state.boundsCustomBox = false;
+      state.boundsCustomCircle = false;
 
       // Extract document canvas dimensions in pixels (96 DPI)
       const docW = parsed.originalWidth || parsed.width || 100;
@@ -862,6 +971,8 @@
       state.rasterImg = img;
       state.rawDocWidthPx = img.width;
       state.rawDocHeightPx = img.height;
+      state.boundsCustomBox = false;
+      state.boundsCustomCircle = false;
 
       // Default physical size at 96 DPI (e.g. 192x192 px = 2.0" x 2.0" cube fit)
       const pxToIn = 1 / 96;
@@ -1150,6 +1261,43 @@
       : `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     DOM.statTime.textContent = timeFormatted;
 
+    // 4b. Update Bounding Box / Circle Dimensions and Geometry
+    const designW = (transformed && transformed.bounds && transformed.bounds.width > 0) ? transformed.bounds.width : state.targetWidth;
+    const designH = (transformed && transformed.bounds && transformed.bounds.height > 0) ? transformed.bounds.height : state.targetHeight;
+    const defaultBoxW = Number((designW * 1.1).toFixed(state.units === 'standard' ? 3 : 1));
+    const defaultBoxH = Number((designH * 1.1).toFixed(state.units === 'standard' ? 3 : 1));
+    const defaultCircleDiam = Number((Math.max(designW, designH) * 1.1).toFixed(state.units === 'standard' ? 3 : 1));
+
+    if (!state.boundsCustomBox) {
+      state.boundsBoxWidth = defaultBoxW;
+      state.boundsBoxLength = defaultBoxH;
+      if (DOM.boundsBoxWidth && document.activeElement !== DOM.boundsBoxWidth) {
+        DOM.boundsBoxWidth.value = defaultBoxW;
+      }
+      if (DOM.boundsBoxLength && document.activeElement !== DOM.boundsBoxLength) {
+        DOM.boundsBoxLength.value = defaultBoxH;
+      }
+    }
+
+    if (!state.boundsCustomCircle) {
+      state.boundsCircleDiameter = defaultCircleDiam;
+      if (DOM.boundsCircleDiameter && document.activeElement !== DOM.boundsCircleDiameter) {
+        DOM.boundsCircleDiameter.value = defaultCircleDiam;
+      }
+    }
+
+    let boundsGeometry = null;
+    if (state.boundsType && state.boundsType !== 'none') {
+      boundsGeometry = GcodeGenerator.createBoundsPath({
+        type: state.boundsType,
+        boxWidth: state.boundsBoxWidth,
+        boxHeight: state.boundsBoxLength,
+        circleDiameter: state.boundsCircleDiameter,
+        originAlign: state.originAlign,
+        power: 1
+      });
+    }
+
     // 5. Update Center Canvas Viewer
     viewer.setData({
       imageElement: (state.fileType === 'raster' && state.processedRaster) ? state.processedRaster.canvas : state.rasterImg,
@@ -1166,7 +1314,8 @@
       bounds: transformed.bounds,
       units: state.units,
       cutFeedrate: state.cutFeedrate,
-      rapidFeedrate: state.rapidFeedrate
+      rapidFeedrate: state.rapidFeedrate,
+      boundsGeometry: boundsGeometry
     });
 
     if (autoFit) {
@@ -1290,11 +1439,65 @@
     URL.revokeObjectURL(url);
   }
 
+  /**
+   * Download Bounding Box / Circle Trace G-Code (1% Power)
+   */
+  function downloadBoundsTraceFile() {
+    let boundsType = state.boundsType;
+    if (!boundsType || boundsType === 'none') {
+      boundsType = 'box';
+      state.boundsType = 'box';
+      if (DOM.boundsType) DOM.boundsType.value = 'box';
+      if (DOM.boundsBoxFields) DOM.boundsBoxFields.style.display = 'block';
+      if (DOM.boundsCircleFields) DOM.boundsCircleFields.style.display = 'none';
+      if (DOM.boundsActionRow) DOM.boundsActionRow.style.display = 'block';
+      processAndGenerate();
+    }
+
+    const boundsPath = GcodeGenerator.createBoundsPath({
+      type: boundsType,
+      boxWidth: state.boundsBoxWidth,
+      boxHeight: state.boundsBoxLength,
+      circleDiameter: state.boundsCircleDiameter,
+      originAlign: state.originAlign,
+      power: 1
+    });
+
+    const gcodeResult = GcodeGenerator.generateGcode([boundsPath], {
+      units: state.units,
+      laserPower: 1, // 1% power level
+      maxPwm: state.maxPwm,
+      cutFeedrate: state.cutFeedrate,
+      rapidFeedrate: state.rapidFeedrate,
+      linuxCNC: state.linuxCNC,
+      prefixGcode: state.prefixGcode,
+      postfixGcode: state.postfixGcode,
+      optimizeTravel: false,
+      variablePower: false
+    });
+
+    if (!gcodeResult || !gcodeResult.gcode) return;
+
+    const ext = state.linuxCNC ? '.ngc' : '.gcode';
+    const filename = `${state.fileName || 'dangerous_laser'}_bounds_trace${ext}`;
+    const blob = new Blob([gcodeResult.gcode], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   window.loadSvgString = loadSvgString;
   window.loadRasterDataUrl = loadRasterDataUrl;
   window.highlightGcodeLine = highlightGcodeLine;
   window.resetSimulation = resetSimulation;
   window.setTheme = setTheme;
+  window.downloadBoundsTraceFile = downloadBoundsTraceFile;
 
   // Self-initialization
   initEvents();

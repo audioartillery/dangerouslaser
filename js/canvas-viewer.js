@@ -98,6 +98,7 @@ const CanvasViewer = (function() {
       this.imageOpacity = 0.5;
       this.showToolpaths = true;
       this.showRapids = true;
+      this.showBounds = true;
       this.showGrid = true;
       this.showOrigin = true;
 
@@ -106,6 +107,7 @@ const CanvasViewer = (function() {
       this.imageTransform = null; // { x, y, width, height, rotation, flipH, flipV }
       this.toolpaths = []; // Array of Array of {x, y, power}
       this.bounds = { minX: 0, minY: 0, maxX: 100, maxY: 100, width: 100, height: 100 };
+      this.boundsGeometry = null; // Bounding box or circle trace path
 
       // Simulation state
       this.isSimulating = false;
@@ -228,7 +230,7 @@ const CanvasViewer = (function() {
     }
 
     /**
-     * Auto-fit view to current bounding box
+     * Auto-fit view to current bounding box (including bounds trace if active)
      */
     fitToView() {
       if (!this.bounds || this.bounds.width <= 0 || this.bounds.height <= 0) {
@@ -239,12 +241,25 @@ const CanvasViewer = (function() {
         return;
       }
 
+      let effectiveBounds = this.bounds;
+      if (this.showBounds && this.boundsGeometry && this.boundsGeometry.bounds) {
+        const gb = this.boundsGeometry.bounds;
+        effectiveBounds = {
+          minX: Math.min(this.bounds.minX, gb.minX),
+          maxX: Math.max(this.bounds.maxX, gb.maxX),
+          minY: Math.min(this.bounds.minY, gb.minY),
+          maxY: Math.max(this.bounds.maxY, gb.maxY),
+          width: Math.max(this.bounds.maxX, gb.maxX) - Math.min(this.bounds.minX, gb.minX),
+          height: Math.max(this.bounds.maxY, gb.maxY) - Math.min(this.bounds.minY, gb.minY)
+        };
+      }
+
       const padding = 60; // px
       const availW = Math.max(100, this.width - padding * 2);
       const availH = Math.max(100, this.height - padding * 2);
 
-      const bW = Math.max(0.1, this.bounds.width);
-      const bH = Math.max(0.1, this.bounds.height);
+      const bW = Math.max(0.1, effectiveBounds.width);
+      const bH = Math.max(0.1, effectiveBounds.height);
 
       const zoomX = availW / bW;
       const zoomY = availH / bH;
@@ -252,8 +267,8 @@ const CanvasViewer = (function() {
       this.zoom = Math.min(zoomX, zoomY, maxZoomCap);
 
       // Center the design in the viewport
-      const centerCNCX = (this.bounds.minX + this.bounds.maxX) / 2;
-      const centerCNCY = (this.bounds.minY + this.bounds.maxY) / 2;
+      const centerCNCX = (effectiveBounds.minX + effectiveBounds.maxX) / 2;
+      const centerCNCY = (effectiveBounds.minY + effectiveBounds.maxY) / 2;
 
       this.panX = this.width / 2 - centerCNCX * this.zoom;
       this.panY = this.height / 2 + centerCNCY * this.zoom;
@@ -264,13 +279,14 @@ const CanvasViewer = (function() {
     /**
      * Update data and recalculate simulation geometry
      */
-    setData({ imageElement, imageTransform, toolpaths, bounds, units, cutFeedrate, rapidFeedrate }) {
+    setData({ imageElement, imageTransform, toolpaths, bounds, units, cutFeedrate, rapidFeedrate, boundsGeometry }) {
       if (imageElement !== undefined) this.imageElement = imageElement;
       if (imageTransform !== undefined) this.imageTransform = imageTransform;
       if (bounds !== undefined) this.bounds = bounds;
       if (units !== undefined) this.units = units;
       if (cutFeedrate !== undefined) this.cutFeedrate = cutFeedrate;
       if (rapidFeedrate !== undefined) this.rapidFeedrate = rapidFeedrate;
+      if (boundsGeometry !== undefined) this.boundsGeometry = boundsGeometry;
       if (toolpaths !== undefined) {
         this.toolpaths = toolpaths;
       }
@@ -412,6 +428,11 @@ const CanvasViewer = (function() {
       this.render();
     }
 
+    setBoundsVisibility(show) {
+      this.showBounds = show;
+      this.render();
+    }
+
     /**
      * Laser simulation controls
      */
@@ -500,6 +521,11 @@ const CanvasViewer = (function() {
       // 5. Draw Toolpath Layer (if enabled)
       if (this.showToolpaths && this.toolpaths.length > 0) {
         this.drawToolpathLayer(ctx, pal);
+      }
+
+      // 5b. Draw Bounding Box / Circle Layer (if enabled)
+      if (this.showBounds && this.boundsGeometry) {
+        this.drawBoundsLayer(ctx, pal);
       }
 
       // 6. Draw Simulation Head (if active or progress > 0)
@@ -766,6 +792,55 @@ const CanvasViewer = (function() {
           ctx.beginPath();
           ctx.arc(pt.x, pt.y, 2.5, 0, Math.PI * 2);
           ctx.fill();
+        }
+      }
+
+      ctx.restore();
+    }
+
+    drawBoundsLayer(ctx, pal) {
+      const geom = this.boundsGeometry;
+      if (!geom) return;
+
+      ctx.save();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
+
+      if (geom.isCircle) {
+        const c = this.toScreen(geom.cx, geom.cy);
+        const r = geom.r * this.zoom;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Dimension label tag
+        ctx.setLineDash([]);
+        ctx.font = '10px monospace';
+        ctx.fillStyle = '#38bdf8';
+        const diam = (geom.r * 2).toFixed(this.units === 'standard' ? 3 : 1);
+        const unit = this.units === 'standard' ? 'in' : 'mm';
+        ctx.fillText(`Ø ${diam} ${unit}`, c.x + r + 6, c.y + 4);
+      } else if (geom.length >= 2) {
+        ctx.beginPath();
+        const start = this.toScreen(geom[0].x, geom[0].y);
+        ctx.moveTo(start.x, start.y);
+        for (let i = 1; i < geom.length; i++) {
+          const pt = this.toScreen(geom[i].x, geom[i].y);
+          ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.stroke();
+
+        // Dimension label tag
+        if (geom.bounds) {
+          ctx.setLineDash([]);
+          ctx.font = '10px monospace';
+          ctx.fillStyle = '#38bdf8';
+          const w = geom.bounds.width.toFixed(this.units === 'standard' ? 3 : 1);
+          const h = geom.bounds.height.toFixed(this.units === 'standard' ? 3 : 1);
+          const unit = this.units === 'standard' ? 'in' : 'mm';
+          const topRt = this.toScreen(geom.bounds.maxX, geom.bounds.maxY);
+          ctx.fillText(`${w} × ${h} ${unit}`, topRt.x + 6, topRt.y - 4);
         }
       }
 

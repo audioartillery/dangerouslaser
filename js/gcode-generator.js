@@ -667,9 +667,114 @@ const GcodeGenerator = (function() {
     };
   }
 
+  /**
+   * Generate toolpath for a bounding box or bounding circle
+   * Circle is centered on machine zero (0, 0).
+   * Box is centered on machine zero if originAlign is 'center',
+   * or has its corresponding corner aligned with machine zero (0, 0).
+   */
+  function createBoundsPath(options) {
+    const {
+      type = 'box',             // 'box' or 'circle'
+      boxWidth = 1,
+      boxHeight = 1,
+      circleDiameter = 1,
+      originAlign = 'center',   // 'center', 'bottom-left', 'top-left', 'bottom-right', 'top-right'
+      power = 1
+    } = options;
+
+    if (type === 'circle') {
+      const r = Math.max(1e-4, circleDiameter / 2);
+      const steps = 64;
+      const pts = [];
+      for (let s = 0; s <= steps; s++) {
+        const angle = (s / steps) * Math.PI * 2;
+        pts.push({
+          x: r * Math.cos(angle),
+          y: r * Math.sin(angle),
+          power
+        });
+      }
+      pts.isCircle = true;
+      pts.cx = 0;
+      pts.cy = 0;
+      pts.r = r;
+      pts.power = power;
+      pts.isBoundsTrace = true;
+      pts.bounds = {
+        minX: -r,
+        maxX: r,
+        minY: -r,
+        maxY: r,
+        width: r * 2,
+        height: r * 2
+      };
+      return pts;
+    }
+
+    // Bounding Box (Rectangle)
+    const w = Math.max(1e-4, boxWidth);
+    const h = Math.max(1e-4, boxHeight);
+    let minX = 0, maxX = 0, minY = 0, maxY = 0;
+
+    switch (originAlign) {
+      case 'bottom-left':
+        minX = 0;
+        maxX = w;
+        minY = 0;
+        maxY = h;
+        break;
+      case 'top-left':
+        minX = 0;
+        maxX = w;
+        minY = -h;
+        maxY = 0;
+        break;
+      case 'bottom-right':
+        minX = -w;
+        maxX = 0;
+        minY = 0;
+        maxY = h;
+        break;
+      case 'top-right':
+        minX = -w;
+        maxX = 0;
+        minY = -h;
+        maxY = 0;
+        break;
+      case 'center':
+      default:
+        minX = -w / 2;
+        maxX = w / 2;
+        minY = -h / 2;
+        maxY = h / 2;
+        break;
+    }
+
+    const boxPts = [
+      { x: minX, y: minY, power },
+      { x: maxX, y: minY, power },
+      { x: maxX, y: maxY, power },
+      { x: minX, y: maxY, power },
+      { x: minX, y: minY, power }
+    ];
+    boxPts.power = power;
+    boxPts.isBoundsTrace = true;
+    boxPts.bounds = {
+      minX,
+      maxX,
+      minY,
+      maxY,
+      width: w,
+      height: h
+    };
+    return boxPts;
+  }
+
   return {
     transformPaths,
     optimizePathOrder,
-    generateGcode
+    generateGcode,
+    createBoundsPath
   };
 })();

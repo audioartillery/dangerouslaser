@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dangerous Laser - CNC Laser G-Code Generator</title>
-  <link rel="stylesheet" href="css/style.css?v=3">
+  <link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
   <div id="app-container">
@@ -340,6 +340,52 @@
                   <input type="number" id="origin-offset-y" value="0" step="0.1" class="control-input">
                 </div>
               </div>
+
+              <!-- Bounding Box / Circle Trace -->
+              <div class="field-group-collapsible" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
+                <div class="field-row">
+                  <label for="bounds-type">Bounding Box / Circle Trace:</label>
+                  <select id="bounds-type" class="control-select">
+                    <option value="none" selected>None (Disabled)</option>
+                    <option value="box">Bounding Box (Rectangle)</option>
+                    <option value="circle">Bounding Circle</option>
+                  </select>
+                </div>
+
+                <!-- Box Options (Width & Length) -->
+                <div id="bounds-box-fields" style="display: none; margin-top: 8px;">
+                  <div class="field-row dual-inputs">
+                    <div class="input-half">
+                      <label for="bounds-box-width">Width (<span class="unit-dim-label">in</span>):</label>
+                      <input type="number" id="bounds-box-width" step="0.05" min="0.01" class="control-input">
+                    </div>
+                    <div class="input-half">
+                      <label for="bounds-box-length">Length / Height (<span class="unit-dim-label">in</span>):</label>
+                      <input type="number" id="bounds-box-length" step="0.05" min="0.01" class="control-input">
+                    </div>
+                  </div>
+                  <div class="field-hint" id="bounds-box-hint" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                    <span>Aligned with Machine Zero. Default: +10%</span>
+                    <button type="button" class="btn-chip" id="btn-bounds-box-reset" style="padding: 1px 6px; font-size: 9.5px;">Reset 10%</button>
+                  </div>
+                </div>
+
+                <!-- Circle Options (Diameter) -->
+                <div id="bounds-circle-fields" style="display: none; margin-top: 8px;">
+                  <div class="field-row">
+                    <label for="bounds-circle-diameter">Diameter (<span class="unit-dim-label">in</span>):</label>
+                    <input type="number" id="bounds-circle-diameter" step="0.05" min="0.01" class="control-input">
+                  </div>
+                  <div class="field-hint" id="bounds-circle-hint" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                    <span>Centered on Machine Zero. Default: +10%</span>
+                    <button type="button" class="btn-chip" id="btn-bounds-circle-reset" style="padding: 1px 6px; font-size: 9.5px;">Reset 10%</button>
+                  </div>
+                </div>
+
+                <div id="bounds-action-row" style="display: none; margin-top: 8px;">
+                  <button type="button" class="btn-secondary" id="btn-bounds-download-trace" style="width: 100%;">Download Bounds Trace (1% Power)</button>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -467,6 +513,10 @@
               <input type="checkbox" id="toggle-layer-rapids" checked>
               <span>Rapids</span>
             </label>
+            <label class="toolbar-checkbox">
+              <input type="checkbox" id="toggle-layer-bounds" checked>
+              <span>Bounds</span>
+            </label>
           </div>
 
           <div class="toolbar-group nav-controls">
@@ -551,6 +601,13 @@
               </svg>
               <span id="copy-text">Copy</span>
             </button>
+            <button type="button" class="btn-action" id="btn-download-bounds" title="Download Bounding Box/Circle Trace G-Code (1% Power)">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3"/>
+                <circle cx="12" cy="12" r="5" stroke-dasharray="2 2"/>
+              </svg>
+              <span>Download Bounds Trace</span>
+            </button>
             <button type="button" class="btn-action primary-action" id="btn-download-gcode" title="Download .gcode file">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -594,11 +651,11 @@
   </div>
 
   <!-- Scripts (Plain JS for 100% offline file:// compatibility without CORS or web server) -->
-  <script src="js/raster-engine.js?v=3"></script>
-  <script src="js/svg-parser.js?v=3"></script>
-  <script src="js/gcode-generator.js?v=3"></script>
-  <script src="js/canvas-viewer.js?v=3"></script>
-  <script src="js/sample-data.js?v=3"></script>
-  <script src="js/app.js?v=3"></script>
+  <script src="js/raster-engine.js?v=4"></script>
+  <script src="js/svg-parser.js?v=4"></script>
+  <script src="js/gcode-generator.js?v=4"></script>
+  <script src="js/canvas-viewer.js?v=4"></script>
+  <script src="js/sample-data.js?v=4"></script>
+  <script src="js/app.js?v=4"></script>
 </body>
 </html>

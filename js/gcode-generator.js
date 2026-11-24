@@ -457,6 +457,8 @@ const GcodeGenerator = (function() {
       maxPwm = 100,           // Max S value corresponding to 100% power (default 100)
       cutFeedrate = 1000,     // mm/min or in/min
       rapidFeedrate = 3000,   // mm/min or in/min
+      initialZMove = true,    // output G1 Z0 at start
+      zFeedrate = 2,          // speed for initial Z move
       linuxCNC = false,       // wrap in '%'
       prefixGcode = '',
       postfixGcode = '',
@@ -503,13 +505,18 @@ const GcodeGenerator = (function() {
       gcodeLines.push(`${laserOffCmd} (Ensure laser is off)`);
     }
 
+    // 3b. Initial move to Z0 at start
+    if (initialZMove) {
+      gcodeLines.push(`G1 Z0 F${zFeedrate}`);
+    }
+
     // Tracking stats
     let totalCutDist = 0;
     let totalRapidDist = 0;
     let currentX = 0;
     let currentY = 0;
     let laserIsOn = false;
-    let currentFeed = 0;
+    let currentFeed = initialZMove ? zFeedrate : 0;
     let currentS = 0;
 
     // 4. Toolpath execution

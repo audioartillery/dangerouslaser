@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dangerous Laser - CNC Laser G-Code Generator</title>
-  <link rel="stylesheet" href="css/style.css?v=4">
+  <link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body>
   <div id="app-container">
@@ -227,6 +227,20 @@
                 <div class="input-half">
                   <label for="rapid-feedrate">Rapid Feedrate (<span class="unit-speed-label">in/min</span>)</label>
                   <input type="number" id="rapid-feedrate" value="120" min="1" max="2000" step="10" class="control-input">
+                </div>
+              </div>
+
+              <div class="field-group" style="margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border-subtle); gap: 8px;">
+                <div class="field-row checkbox-row">
+                  <label class="toggle-checkbox">
+                    <input type="checkbox" id="initial-z-move" checked>
+                    <span class="checkmark"></span>
+                    <span>Move to Z0 at Start</span>
+                  </label>
+                </div>
+                <div class="field-row" id="initial-z-feedrate-row">
+                  <label for="initial-z-feedrate">Z Speed (<span class="unit-speed-label">in/min</span>):</label>
+                  <input type="number" id="initial-z-feedrate" value="2" min="0.1" max="1000" step="0.5" class="control-input">
                 </div>
               </div>
             </div>
@@ -651,11 +665,11 @@
   </div>
 
   <!-- Scripts (Plain JS for 100% offline file:// compatibility without CORS or web server) -->
-  <script src="js/raster-engine.js?v=4"></script>
-  <script src="js/svg-parser.js?v=4"></script>
-  <script src="js/gcode-generator.js?v=4"></script>
-  <script src="js/canvas-viewer.js?v=4"></script>
-  <script src="js/sample-data.js?v=4"></script>
-  <script src="js/app.js?v=4"></script>
+  <script src="js/raster-engine.js?v=5"></script>
+  <script src="js/svg-parser.js?v=5"></script>
+  <script src="js/gcode-generator.js?v=5"></script>
+  <script src="js/canvas-viewer.js?v=5"></script>
+  <script src="js/sample-data.js?v=5"></script>
+  <script src="js/app.js?v=5"></script>
 </body>
 </html>

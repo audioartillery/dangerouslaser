@@ -60,6 +60,8 @@
     maxPwm: 100,        // Max PWM S value (100 default, user configurable)
     cutFeedrate: 40,    // in/min
     rapidFeedrate: 120, // in/min
+    initialZMove: true, // Move to Z0 at start (default to on)
+    zFeedrate: 2,       // in/min (default 2 in/min)
 
     // Raster options (default standard inches)
     rasterMode: 'grayscale', // 'dither', 'atkinson', 'grayscale', 'contour'
@@ -114,6 +116,9 @@
     maxPwm: document.getElementById('max-pwm'),
     cutFeedrate: document.getElementById('cut-feedrate'),
     rapidFeedrate: document.getElementById('rapid-feedrate'),
+    initialZMove: document.getElementById('initial-z-move'),
+    initialZFeedrate: document.getElementById('initial-z-feedrate'),
+    initialZFeedrateRow: document.getElementById('initial-z-feedrate-row'),
     unitSpeedLabels: document.querySelectorAll('.unit-speed-label'),
 
     // Dimensions
@@ -398,6 +403,30 @@
       state.rapidFeedrate = Math.max(1, parseFloat(e.target.value) || 120);
       triggerUpdate(10);
     });
+
+    if (DOM.initialZMove) {
+      DOM.initialZMove.checked = state.initialZMove;
+      DOM.initialZMove.addEventListener('change', (e) => {
+        state.initialZMove = e.target.checked;
+        if (DOM.initialZFeedrateRow) {
+          DOM.initialZFeedrateRow.style.display = state.initialZMove ? 'flex' : 'none';
+        }
+        triggerUpdate(10);
+      });
+    }
+
+    if (DOM.initialZFeedrate) {
+      DOM.initialZFeedrate.value = state.zFeedrate;
+      const onZFeedrateChange = (e) => {
+        const val = parseFloat(e.target.value);
+        if (val > 0) {
+          state.zFeedrate = val;
+          triggerUpdate(20);
+        }
+      };
+      DOM.initialZFeedrate.addEventListener('input', onZFeedrateChange);
+      DOM.initialZFeedrate.addEventListener('change', onZFeedrateChange);
+    }
 
     // 4. Dimensions & Scaling
     DOM.dimWidth.addEventListener('input', () => {
@@ -749,6 +778,7 @@
       state.customTextSize = Number((state.customTextSize / 25.4).toFixed(3));
       state.cutFeedrate = Math.max(1, Math.round(state.cutFeedrate / 25.4));
       state.rapidFeedrate = Math.max(1, Math.round(state.rapidFeedrate / 25.4));
+      state.zFeedrate = Math.max(0.1, Number((state.zFeedrate / 25.4).toFixed(1)));
       state.lineInterval = Number((state.lineInterval / 25.4).toFixed(3));
       // Update prefix template
       state.prefixGcode = state.prefixGcode.replace('G21', 'G20').replace('Metric mm', 'Standard inches');
@@ -766,6 +796,7 @@
       state.customTextSize = Number((state.customTextSize * 25.4).toFixed(2));
       state.cutFeedrate = Math.round(state.cutFeedrate * 25.4);
       state.rapidFeedrate = Math.round(state.rapidFeedrate * 25.4);
+      state.zFeedrate = Math.round(state.zFeedrate * 25.4);
       state.lineInterval = Number((state.lineInterval * 25.4).toFixed(2));
       // Update prefix template
       state.prefixGcode = state.prefixGcode.replace('G20', 'G21').replace('Standard inches', 'Metric mm');
@@ -781,6 +812,7 @@
     if (DOM.customTextSize) DOM.customTextSize.value = state.customTextSize;
     DOM.cutFeedrate.value = state.cutFeedrate;
     DOM.rapidFeedrate.value = state.rapidFeedrate;
+    if (DOM.initialZFeedrate) DOM.initialZFeedrate.value = state.zFeedrate;
     DOM.lineInterval.value = state.lineInterval;
     if (DOM.svgFillInterval) DOM.svgFillInterval.value = state.lineInterval;
     DOM.gcodePrefix.value = state.prefixGcode;
@@ -1229,6 +1261,8 @@
       maxPwm: state.maxPwm,
       cutFeedrate: state.cutFeedrate,
       rapidFeedrate: state.rapidFeedrate,
+      initialZMove: state.initialZMove,
+      zFeedrate: state.zFeedrate,
       linuxCNC: state.linuxCNC,
       prefixGcode: state.prefixGcode,
       postfixGcode: state.postfixGcode,
@@ -1469,6 +1503,8 @@
       maxPwm: state.maxPwm,
       cutFeedrate: state.cutFeedrate,
       rapidFeedrate: state.rapidFeedrate,
+      initialZMove: state.initialZMove,
+      zFeedrate: state.zFeedrate,
       linuxCNC: state.linuxCNC,
       prefixGcode: state.prefixGcode,
       postfixGcode: state.postfixGcode,

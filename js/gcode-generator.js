@@ -16,8 +16,6 @@ const GcodeGenerator = (function() {
    * Raw paths are Array of Array of {x, y}
    */
   function transformPaths(rawPaths, options) {
-    if (!rawPaths || !rawPaths.length) return { paths: [], bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 }, center: { x: 0, y: 0 } };
-
     const {
       targetWidth,       // In target units (mm or in)
       targetHeight,      // In target units
@@ -32,8 +30,14 @@ const GcodeGenerator = (function() {
       offsetX = 0,
       offsetY = 0,
       fillSolid = false,
-      lineInterval = 0.008
+      lineInterval = 0.008,
+      useDocBounds = false // if true, align and compute bounds from full rotated document rectangle (e.g. raster images)
     } = options;
+
+    const hasPaths = rawPaths && rawPaths.length > 0;
+    if (!hasPaths && !useDocBounds) {
+      return { paths: [], bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 }, center: { x: 0, y: 0 } };
+    }
 
     // 1. Determine reference center and dimensions for scaling
     let docW = docWidth;
@@ -41,7 +45,7 @@ const GcodeGenerator = (function() {
     let centerX = docMinX + (docWidth ? docWidth / 2 : 0);
     let centerY = docMinY + (docHeight ? docHeight / 2 : 0);
 
-    if (!docW || !docH) {
+    if ((!docW || !docH) && hasPaths) {
       // Calculate from raw path bounds if document dimensions not provided
       let rawMinX = Infinity, rawMinY = Infinity, rawMaxX = -Infinity, rawMaxY = -Infinity;
       for (const path of rawPaths) {
@@ -66,7 +70,7 @@ const GcodeGenerator = (function() {
     const transformedPaths = [];
 
     // Scale to target dimensions, invert Y for CNC coordinates, flip, and rotate
-    for (const path of rawPaths) {
+    for (const path of (rawPaths || [])) {
       const newPath = [];
       for (const pt of path) {
         // u from -0.5 (left) to +0.5 (right)
@@ -119,12 +123,22 @@ const GcodeGenerator = (function() {
 
     // 3. Find bounds after rotation
     let rotMinX = Infinity, rotMinY = Infinity, rotMaxX = -Infinity, rotMaxY = -Infinity;
-    for (const path of transformedPaths) {
-      for (const pt of path) {
-        if (pt.x < rotMinX) rotMinX = pt.x;
-        if (pt.y < rotMinY) rotMinY = pt.y;
-        if (pt.x > rotMaxX) rotMaxX = pt.x;
-        if (pt.y > rotMaxY) rotMaxY = pt.y;
+    const useFixedDocBounds = useDocBounds && targetWidth > 0 && targetHeight > 0;
+    if (useFixedDocBounds) {
+      const rotHalfW = (targetWidth / 2) * Math.abs(cosR) + (targetHeight / 2) * Math.abs(sinR);
+      const rotHalfH = (targetWidth / 2) * Math.abs(sinR) + (targetHeight / 2) * Math.abs(cosR);
+      rotMinX = -rotHalfW;
+      rotMaxX = rotHalfW;
+      rotMinY = -rotHalfH;
+      rotMaxY = rotHalfH;
+    } else {
+      for (const path of transformedPaths) {
+        for (const pt of path) {
+          if (pt.x < rotMinX) rotMinX = pt.x;
+          if (pt.y < rotMinY) rotMinY = pt.y;
+          if (pt.x > rotMaxX) rotMaxX = pt.x;
+          if (pt.y > rotMaxY) rotMaxY = pt.y;
+        }
       }
     }
 
@@ -199,16 +213,27 @@ const GcodeGenerator = (function() {
       outputPaths = expandSolidFills(finalPaths, lineInterval);
     }
 
+    const outBounds = useFixedDocBounds
+      ? {
+          minX: rotMinX + shiftX,
+          minY: rotMinY + shiftY,
+          maxX: rotMaxX + shiftX,
+          maxY: rotMaxY + shiftY,
+          width: rotW,
+          height: rotH
+        }
+      : {
+          minX: finalMinX,
+          minY: finalMinY,
+          maxX: finalMaxX,
+          maxY: finalMaxY,
+          width: rotW,
+          height: rotH
+        };
+
     return {
       paths: outputPaths,
-      bounds: {
-        minX: finalMinX,
-        minY: finalMinY,
-        maxX: finalMaxX,
-        maxY: finalMaxY,
-        width: rotW,
-        height: rotH
-      },
+      bounds: outBounds,
       center: {
         x: shiftX,
         y: shiftY

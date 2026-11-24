@@ -1249,7 +1249,8 @@
       offsetX: state.offsetX,
       offsetY: state.offsetY,
       fillSolid: state.fileType === 'svg' && state.svgFillSolid,
-      lineInterval: state.lineInterval
+      lineInterval: state.lineInterval,
+      useDocBounds: state.fileType === 'raster'
     });
 
     state.transformedPaths = transformed.paths;

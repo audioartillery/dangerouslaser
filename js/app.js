@@ -61,7 +61,7 @@
     cutFeedrate: 40,    // in/min
     rapidFeedrate: 120, // in/min
     initialZMove: true, // Move to Z0 at start (default to on)
-    zFeedrate: 2,       // in/min (default 2 in/min)
+    zFeedrate: 10,      // in/min (default 10 in/min)
 
     // Raster options (default standard inches)
     rasterMode: 'grayscale', // 'dither', 'atkinson', 'grayscale', 'contour'

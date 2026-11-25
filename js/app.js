@@ -1186,9 +1186,11 @@
       const targetH_mm = state.units === 'standard' ? (state.targetHeight * 25.4) : state.targetHeight;
       const interval_mm = state.units === 'standard' ? (state.lineInterval * 25.4) : state.lineInterval;
 
-      // Lines count in height
-      const numLines = Math.max(10, Math.min(1000, Math.round(targetH_mm / interval_mm)));
-      const numCols = Math.max(10, Math.min(1000, Math.round(targetW_mm / interval_mm)));
+      // Vertical scanline count from physical height and line interval (capped at 8000)
+      const numLines = Math.max(10, Math.min(8000, Math.round(targetH_mm / interval_mm)));
+      // Horizontal resolution preserves source image width natively (decoupled from Y line interval, capped at 8000)
+      const srcWidthPx = state.rasterImg.naturalWidth || state.rasterImg.width || Math.round(targetW_mm / interval_mm);
+      const numCols = Math.max(1, Math.min(8000, Math.round(srcWidthPx)));
 
       // Process raster image
       const processed = RasterEngine.processImageData(state.rasterImg, {
@@ -1221,7 +1223,13 @@
           processed.height,
           state.targetWidth,
           state.targetHeight,
-          { bidirectional: state.bidirectional, minPower: 0, maxPower: state.laserPower }
+          {
+            bidirectional: state.bidirectional,
+            minPower: 0,
+            maxPower: state.laserPower,
+            maxPwm: state.maxPwm,
+            pwmTolerance: 0
+          }
         );
       } else if (state.rasterMode === 'contour') {
         rawPaths = RasterEngine.traceContours(

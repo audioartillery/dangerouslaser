@@ -27,6 +27,49 @@ const RasterEngine = (function() {
     const width = Math.max(1, Math.round(targetWidthPx) || 100);
     const height = Math.max(1, Math.round(targetHeightPx) || 100);
 
+    const srcW = img.naturalWidth || img.width || width;
+    const srcH = img.naturalHeight || img.height || height;
+
+    // Multi-step high-quality downscaling (at most 2x per pass along any shrunk axis)
+    // Prevents aliasing and dropped thin lines when downscaling high-res images to scanline height.
+    let currentSource = img;
+    let curW = srcW;
+    let curH = srcH;
+
+    if (curW > width * 2 || curH > height * 2) {
+      let nextW = (curW > width * 2) ? Math.max(width, Math.ceil(curW / 2)) : curW;
+      let nextH = (curH > height * 2) ? Math.max(height, Math.ceil(curH / 2)) : curH;
+      const firstCanvas = document.createElement('canvas');
+      firstCanvas.width = nextW;
+      firstCanvas.height = nextH;
+      const firstCtx = firstCanvas.getContext('2d');
+      // Composite transparent PNGs onto white on the first pass so alpha edges blend cleanly
+      firstCtx.fillStyle = '#ffffff';
+      firstCtx.fillRect(0, 0, nextW, nextH);
+      firstCtx.imageSmoothingEnabled = true;
+      firstCtx.imageSmoothingQuality = 'high';
+      firstCtx.drawImage(currentSource, 0, 0, curW, curH, 0, 0, nextW, nextH);
+
+      currentSource = firstCanvas;
+      curW = nextW;
+      curH = nextH;
+
+      while (curW > width * 2 || curH > height * 2) {
+        nextW = (curW > width * 2) ? Math.max(width, Math.ceil(curW / 2)) : curW;
+        nextH = (curH > height * 2) ? Math.max(height, Math.ceil(curH / 2)) : curH;
+        const stepCanvas = document.createElement('canvas');
+        stepCanvas.width = nextW;
+        stepCanvas.height = nextH;
+        const stepCtx = stepCanvas.getContext('2d');
+        stepCtx.imageSmoothingEnabled = true;
+        stepCtx.imageSmoothingQuality = 'high';
+        stepCtx.drawImage(currentSource, 0, 0, curW, curH, 0, 0, nextW, nextH);
+        currentSource = stepCanvas;
+        curW = nextW;
+        curH = nextH;
+      }
+    }
+
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
@@ -36,8 +79,12 @@ const RasterEngine = (function() {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, width, height);
 
-    // Draw image scaled
-    ctx.drawImage(img, 0, 0, width, height);
+    // Draw final scaled image (1:1 copy disables smoothing to preserve crisp native pixels)
+    ctx.imageSmoothingEnabled = (curW !== width || curH !== height);
+    if (ctx.imageSmoothingEnabled) {
+      ctx.imageSmoothingQuality = 'high';
+    }
+    ctx.drawImage(currentSource, 0, 0, curW, curH, 0, 0, width, height);
 
     const imgData = ctx.getImageData(0, 0, width, height);
     const data = imgData.data;
@@ -240,11 +287,13 @@ const RasterEngine = (function() {
       bidirectional = true,
       minPower = 0,
       maxPower = 100,
-      powerTolerance = 2 // merge adjacent pixels if power delta <= tolerance
+      maxPwm = 100,
+      pwmTolerance = 0 // merge adjacent pixels if output PWM S delta <= tolerance (0 = exact PWM match)
     } = options;
 
     const pixelWidth = targetPhysicalWidth / width;
     const pixelHeight = targetPhysicalHeight / height;
+    const toPwm = pct => Math.max(0, Math.min(maxPwm, Math.round((pct / 100) * maxPwm)));
 
     const paths = []; // Array of continuous scanline paths: [{x, y, power}, ...]
 
@@ -258,19 +307,21 @@ const RasterEngine = (function() {
 
       let activePath = null;
       let runPower = 0;
+      let runPwmS = 0;
       let runEndX = 0;
 
       for (let x = startX; x !== endX; x += stepX) {
         const idx = y * width + x;
         const gray = grayBuffer[idx]; // 0 (black) to 255 (white)
-        // 0 -> maxPower, 255 -> minPower
+        // 0 -> maxPower, 255 -> minPower (keep floating-point precision until final PWM S mapping)
         const darkness = (255 - gray) / 255;
-        const power = Math.round(minPower + darkness * (maxPower - minPower));
+        const power = minPower + darkness * (maxPower - minPower);
+        const pwmS = toPwm(power);
 
         const xLeading = isReverse ? (x + 1) * pixelWidth : x * pixelWidth;
         const xTrailing = isReverse ? x * pixelWidth : (x + 1) * pixelWidth;
 
-        if (power <= 0) {
+        if (pwmS <= 0) {
           // White pixel / laser off -> finish current contiguous scanline path
           if (activePath) {
             activePath.push({ x: runEndX, y: physicalY, power: runPower });
@@ -281,14 +332,16 @@ const RasterEngine = (function() {
           if (!activePath) {
             activePath = [{ x: xLeading, y: physicalY, power: power }];
             runPower = power;
+            runPwmS = pwmS;
             runEndX = xTrailing;
-          } else if (Math.abs(runPower - power) > powerTolerance) {
-            // Power level changed -> commit previous segment endpoint and continue path with new power
+          } else if (Math.abs(runPwmS - pwmS) > pwmTolerance) {
+            // Output PWM S value changed -> commit previous segment endpoint and continue path with new power
             activePath.push({ x: xLeading, y: physicalY, power: runPower });
             runPower = power;
+            runPwmS = pwmS;
             runEndX = xTrailing;
           } else {
-            // Same power within tolerance -> extend current segment
+            // Same output PWM S value -> extend current segment
             runEndX = xTrailing;
           }
         }

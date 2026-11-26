@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dangerous Laser - CNC Laser G-Code Generator</title>
-  <link rel="stylesheet" href="css/style.css?v=5">
+  <link rel="stylesheet" href="css/style.css?v=8">
 </head>
 <body>
   <div id="app-container">
@@ -85,6 +85,30 @@
                   <option value="cool">Cool</option>
                 </select>
               </div>
+            </div>
+
+            <!-- Local Settings Profiles (localStorage + JSON Export/Import) -->
+            <div class="profile-manager">
+              <div class="field-row">
+                <label for="profile-select">Local Profile:</label>
+                <select id="profile-select" class="control-select">
+                  <option value="">-- Last Used (Auto-Saved) --</option>
+                </select>
+              </div>
+              <div class="profile-save-row">
+                <input type="text" id="profile-name-input" class="control-input" placeholder="Profile name...">
+                <button type="button" class="btn-secondary" id="btn-profile-save" title="Save or overwrite named profile">Save</button>
+              </div>
+              <div class="profile-actions-row">
+                <button type="button" class="btn-secondary" id="btn-profile-delete" title="Delete selected profile" disabled>Delete</button>
+                <button type="button" class="btn-secondary" id="btn-profile-reset" title="Reset all settings to factory defaults">Defaults</button>
+              </div>
+              <div class="profile-actions-row">
+                <button type="button" class="btn-secondary" id="btn-profile-export" title="Export current settings to JSON file">Export JSON</button>
+                <button type="button" class="btn-secondary" id="btn-profile-import" title="Import settings from JSON file">Import JSON</button>
+                <input type="file" id="profile-file-input" accept=".json,application/json" style="display: none;">
+              </div>
+              <div class="field-hint" id="profile-status-hint">Settings auto-save locally in your browser.</div>
             </div>
           </section>
           
@@ -665,11 +689,11 @@
   </div>
 
   <!-- Scripts (Plain JS for 100% offline file:// compatibility without CORS or web server) -->
-  <script src="js/raster-engine.js?v=7"></script>
-  <script src="js/svg-parser.js?v=7"></script>
-  <script src="js/gcode-generator.js?v=7"></script>
-  <script src="js/canvas-viewer.js?v=7"></script>
-  <script src="js/sample-data.js?v=7"></script>
-  <script src="js/app.js?v=7"></script>
+  <script src="js/raster-engine.js?v=8"></script>
+  <script src="js/svg-parser.js?v=8"></script>
+  <script src="js/gcode-generator.js?v=8"></script>
+  <script src="js/canvas-viewer.js?v=8"></script>
+  <script src="js/sample-data.js?v=8"></script>
+  <script src="js/app.js?v=9"></script>
 </body>
 </html>

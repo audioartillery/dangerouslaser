@@ -90,6 +90,15 @@
     fileStatusBadge: document.getElementById('file-status-badge'),
     unitsSelect: document.getElementById('units-select'),
     themeSelect: document.getElementById('theme-select'),
+    profileSelect: document.getElementById('profile-select'),
+    profileNameInput: document.getElementById('profile-name-input'),
+    btnProfileSave: document.getElementById('btn-profile-save'),
+    btnProfileDelete: document.getElementById('btn-profile-delete'),
+    btnProfileReset: document.getElementById('btn-profile-reset'),
+    btnProfileExport: document.getElementById('btn-profile-export'),
+    btnProfileImport: document.getElementById('btn-profile-import'),
+    profileFileInput: document.getElementById('profile-file-input'),
+    profileStatusHint: document.getElementById('profile-status-hint'),
 
     // File Loading & Custom Text Source
     sourceModeFile: document.getElementById('source-mode-file'),
@@ -211,6 +220,56 @@
   window.viewer = viewer;
   window.state = state;
 
+  // Local Profile Storage (localStorage + JSON Export/Import)
+  const PROFILE_STORAGE_KEY = 'dangerous_laser_profiles_v1';
+  let isInitializing = true;
+
+  function extractProfileSettings() {
+    return {
+      units: state.units,
+      theme: state.theme,
+      laserPower: state.laserPower,
+      maxPwm: state.maxPwm,
+      cutFeedrate: state.cutFeedrate,
+      rapidFeedrate: state.rapidFeedrate,
+      initialZMove: state.initialZMove,
+      zFeedrate: state.zFeedrate,
+      originAlign: state.originAlign,
+      offsetX: state.offsetX,
+      offsetY: state.offsetY,
+      boundsType: state.boundsType,
+      boundsBoxWidth: state.boundsBoxWidth,
+      boundsBoxLength: state.boundsBoxLength,
+      boundsCircleDiameter: state.boundsCircleDiameter,
+      boundsCustomBox: state.boundsCustomBox,
+      boundsCustomCircle: state.boundsCustomCircle,
+      showBounds: DOM.toggleLayerBounds ? Boolean(DOM.toggleLayerBounds.checked) : true,
+      svgFillSolid: state.svgFillSolid,
+      rasterMode: state.rasterMode,
+      lineInterval: state.lineInterval,
+      bidirectional: state.bidirectional,
+      contrast: state.contrast,
+      brightness: state.brightness,
+      invert: state.invert,
+      postDelimiter: state.postDelimiter,
+      prefixGcode: state.prefixGcode,
+      postfixGcode: state.postfixGcode
+    };
+  }
+
+  // Snapshot factory defaults before any user/storage mutations
+  const DEFAULT_PROFILE_SETTINGS = extractProfileSettings();
+
+  function updateLaserPowerDisplay() {
+    const effectiveS = Math.round((state.laserPower / 100) * state.maxPwm);
+    if (DOM.laserPowerVal) {
+      DOM.laserPowerVal.textContent = `${state.laserPower}% (S${effectiveS})`;
+    }
+    if (DOM.laserPowerHint) {
+      DOM.laserPowerHint.textContent = `Range: 1% to 100% (S${state.maxPwm} = 100% full power)`;
+    }
+  }
+
   // Debounced update for smooth slider interactions
   let debounceTimer = null;
   function triggerUpdate(delay = 120) {
@@ -224,7 +283,7 @@
    * Initialize Event Listeners
    */
   function initEvents() {
-    // 1. User Preferences: Units & Theme Dropdowns
+    // 1. User Preferences: Units, Theme & Local Profiles
     if (DOM.unitsSelect) {
       DOM.unitsSelect.addEventListener('change', (e) => {
         setUnits(e.target.value);
@@ -234,6 +293,75 @@
     if (DOM.themeSelect) {
       DOM.themeSelect.addEventListener('change', (e) => {
         setTheme(e.target.value);
+      });
+    }
+
+    if (DOM.profileSelect) {
+      DOM.profileSelect.addEventListener('change', (e) => {
+        loadNamedProfile(e.target.value);
+      });
+    }
+
+    if (DOM.btnProfileSave) {
+      DOM.btnProfileSave.addEventListener('click', () => {
+        const name = DOM.profileNameInput ? DOM.profileNameInput.value : '';
+        if (!name || !name.trim()) {
+          if (DOM.profileNameInput) DOM.profileNameInput.focus();
+          setProfileStatus('Enter a profile name to save.');
+          return;
+        }
+        saveNamedProfile(name);
+      });
+    }
+
+    if (DOM.profileNameInput) {
+      DOM.profileNameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const name = DOM.profileNameInput.value;
+          if (name && name.trim()) {
+            saveNamedProfile(name);
+          }
+        }
+      });
+    }
+
+    if (DOM.btnProfileDelete) {
+      DOM.btnProfileDelete.addEventListener('click', () => {
+        const selected = DOM.profileSelect ? DOM.profileSelect.value : '';
+        if (selected) {
+          deleteNamedProfile(selected);
+        }
+      });
+    }
+
+    if (DOM.btnProfileReset) {
+      DOM.btnProfileReset.addEventListener('click', () => {
+        resetProfileToDefaults();
+      });
+    }
+
+    if (DOM.btnProfileExport) {
+      DOM.btnProfileExport.addEventListener('click', () => {
+        exportProfileJson();
+      });
+    }
+
+    if (DOM.btnProfileImport && DOM.profileFileInput) {
+      DOM.btnProfileImport.addEventListener('click', () => {
+        DOM.profileFileInput.click();
+      });
+      DOM.profileFileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          const file = e.target.files[0];
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const baseName = file.name.replace(/\.json$/i, '');
+            importProfileJsonText(ev.target.result, baseName);
+          };
+          reader.readAsText(file);
+          e.target.value = '';
+        }
       });
     }
 
@@ -366,14 +494,6 @@
     }
 
     // 3. Laser Power, Max PWM & Speeds
-    const updateLaserPowerDisplay = () => {
-      const effectiveS = Math.round((state.laserPower / 100) * state.maxPwm);
-      DOM.laserPowerVal.textContent = `${state.laserPower}% (S${effectiveS})`;
-      if (DOM.laserPowerHint) {
-        DOM.laserPowerHint.textContent = `Range: 1% to 100% (S${state.maxPwm} = 100% full power)`;
-      }
-    };
-
     DOM.laserPower.addEventListener('input', (e) => {
       state.laserPower = parseInt(e.target.value, 10);
       updateLaserPowerDisplay();
@@ -608,6 +728,7 @@
     if (DOM.toggleLayerBounds) {
       DOM.toggleLayerBounds.addEventListener('change', (e) => {
         viewer.setBoundsVisibility(e.target.checked);
+        saveAutoSettings();
       });
     }
 
@@ -722,13 +843,16 @@
     DOM.btnDownloadGcode.addEventListener('click', downloadGcodeFile);
   }
 
-  function setTheme(newTheme) {
+  function setTheme(newTheme, { skipSave = false } = {}) {
     state.theme = newTheme;
     document.documentElement.setAttribute('data-theme', newTheme);
     if (DOM.themeSelect && DOM.themeSelect.value !== newTheme) {
       DOM.themeSelect.value = newTheme;
     }
     viewer.setTheme(newTheme);
+    if (!skipSave) {
+      saveAutoSettings();
+    }
   }
 
   function setRotation(deg) {
@@ -747,7 +871,7 @@
     DOM.dimHeight.value = Number(state.targetHeight).toFixed(state.units === 'standard' ? 3 : 1);
   }
 
-  function setUnits(newUnits) {
+  function setUnits(newUnits, { skipGenerate = false, skipSave = false } = {}) {
     if (state.units === newUnits) return;
     state.units = newUnits;
 
@@ -818,7 +942,12 @@
     DOM.gcodePrefix.value = state.prefixGcode;
 
     viewer.units = newUnits;
-    processAndGenerate(true);
+    if (!skipSave) {
+      saveAutoSettings();
+    }
+    if (!skipGenerate) {
+      processAndGenerate(true);
+    }
   }
 
   /**
@@ -931,8 +1060,6 @@
       state.fileType = 'svg';
       state.svgString = svgText;
       state.rawSvgData = parsed;
-      state.boundsCustomBox = false;
-      state.boundsCustomCircle = false;
 
       // Extract document canvas dimensions in pixels (96 DPI)
       const docW = parsed.originalWidth || parsed.width || 100;
@@ -1003,8 +1130,6 @@
       state.rasterImg = img;
       state.rawDocWidthPx = img.width;
       state.rawDocHeightPx = img.height;
-      state.boundsCustomBox = false;
-      state.boundsCustomCircle = false;
 
       // Default physical size at 96 DPI (e.g. 192x192 px = 2.0" x 2.0" cube fit)
       const pxToIn = 1 / 96;
@@ -1364,6 +1489,9 @@
     if (autoFit) {
       viewer.fitToView();
     }
+
+    // Auto-save current settings locally (no-op during initial page bootstrap)
+    saveAutoSettings();
   }
 
   /**
@@ -1537,16 +1665,406 @@
     URL.revokeObjectURL(url);
   }
 
+  /**
+   * Local Profile Storage (localStorage auto-save, named profiles, JSON export/import)
+   */
+  function readProfileStore() {
+    const empty = { version: 1, activeProfile: '', lastSettings: null, profiles: {} };
+    try {
+      const raw = window.localStorage.getItem(PROFILE_STORAGE_KEY);
+      if (!raw) return empty;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return empty;
+      return {
+        version: 1,
+        activeProfile: typeof parsed.activeProfile === 'string' ? parsed.activeProfile : '',
+        lastSettings: (parsed.lastSettings && typeof parsed.lastSettings === 'object') ? parsed.lastSettings : null,
+        profiles: (parsed.profiles && typeof parsed.profiles === 'object') ? parsed.profiles : {}
+      };
+    } catch (err) {
+      return empty;
+    }
+  }
+
+  function writeProfileStore(store) {
+    try {
+      window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(store));
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function setProfileStatus(msg) {
+    if (DOM.profileStatusHint) {
+      DOM.profileStatusHint.textContent = msg;
+    }
+  }
+
+  function refreshProfileDropdown(selectedName = '') {
+    if (!DOM.profileSelect) return;
+    const store = readProfileStore();
+    const names = Object.keys(store.profiles).sort((a, b) => a.localeCompare(b));
+
+    DOM.profileSelect.innerHTML = '';
+    const autoOpt = document.createElement('option');
+    autoOpt.value = '';
+    autoOpt.textContent = '-- Last Used (Auto-Saved) --';
+    DOM.profileSelect.appendChild(autoOpt);
+
+    for (const name of names) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      DOM.profileSelect.appendChild(opt);
+    }
+
+    const validSelected = (selectedName && store.profiles[selectedName]) ? selectedName : '';
+    DOM.profileSelect.value = validSelected;
+    if (DOM.btnProfileDelete) {
+      DOM.btnProfileDelete.disabled = !validSelected;
+    }
+  }
+
+  function saveAutoSettings() {
+    if (isInitializing) return;
+    const store = readProfileStore();
+    store.lastSettings = extractProfileSettings();
+    writeProfileStore(store);
+  }
+
+  function applyProfileSettings(data, { skipGenerate = false, skipSave = false } = {}) {
+    if (!data || typeof data !== 'object') return;
+
+    // 1. Units first so loaded artwork scales cleanly before setting unit-specific feeds/offsets
+    if (data.units === 'standard' || data.units === 'metric') {
+      if (data.units !== state.units) {
+        setUnits(data.units, { skipGenerate: true, skipSave: true });
+      }
+    }
+
+    // 2. Theme
+    if (data.theme === 'default' || data.theme === 'cold-war' || data.theme === 'cool') {
+      setTheme(data.theme, { skipSave: true });
+    }
+
+    // 3. Laser & Feedrate
+    if (typeof data.laserPower === 'number' && isFinite(data.laserPower)) {
+      state.laserPower = Math.max(1, Math.min(100, Math.round(data.laserPower)));
+      if (DOM.laserPower) DOM.laserPower.value = state.laserPower;
+    }
+    if (typeof data.maxPwm === 'number' && isFinite(data.maxPwm) && data.maxPwm >= 1) {
+      state.maxPwm = Math.round(data.maxPwm);
+      if (DOM.maxPwm) DOM.maxPwm.value = state.maxPwm;
+    }
+    updateLaserPowerDisplay();
+
+    if (typeof data.cutFeedrate === 'number' && isFinite(data.cutFeedrate) && data.cutFeedrate > 0) {
+      state.cutFeedrate = data.cutFeedrate;
+      if (DOM.cutFeedrate) DOM.cutFeedrate.value = state.cutFeedrate;
+    }
+    if (typeof data.rapidFeedrate === 'number' && isFinite(data.rapidFeedrate) && data.rapidFeedrate > 0) {
+      state.rapidFeedrate = data.rapidFeedrate;
+      if (DOM.rapidFeedrate) DOM.rapidFeedrate.value = state.rapidFeedrate;
+    }
+    if (typeof data.initialZMove === 'boolean') {
+      state.initialZMove = data.initialZMove;
+      if (DOM.initialZMove) DOM.initialZMove.checked = state.initialZMove;
+      if (DOM.initialZFeedrateRow) {
+        DOM.initialZFeedrateRow.style.display = state.initialZMove ? 'flex' : 'none';
+      }
+    }
+    if (typeof data.zFeedrate === 'number' && isFinite(data.zFeedrate) && data.zFeedrate > 0) {
+      state.zFeedrate = data.zFeedrate;
+      if (DOM.initialZFeedrate) DOM.initialZFeedrate.value = state.zFeedrate;
+    }
+
+    // 4. Alignment, Offsets & Bounds Trace
+    const validOrigins = ['center', 'bottom-left', 'top-left', 'bottom-right', 'top-right'];
+    if (validOrigins.includes(data.originAlign)) {
+      state.originAlign = data.originAlign;
+      if (DOM.originAlign) DOM.originAlign.value = state.originAlign;
+    }
+    if (typeof data.offsetX === 'number' && isFinite(data.offsetX)) {
+      state.offsetX = data.offsetX;
+      if (DOM.originOffsetX) DOM.originOffsetX.value = state.offsetX;
+    }
+    if (typeof data.offsetY === 'number' && isFinite(data.offsetY)) {
+      state.offsetY = data.offsetY;
+      if (DOM.originOffsetY) DOM.originOffsetY.value = state.offsetY;
+    }
+    if (data.boundsType === 'none' || data.boundsType === 'box' || data.boundsType === 'circle') {
+      state.boundsType = data.boundsType;
+      const isBox = state.boundsType === 'box';
+      const isCircle = state.boundsType === 'circle';
+      if (DOM.boundsType) DOM.boundsType.value = state.boundsType;
+      if (DOM.boundsBoxFields) DOM.boundsBoxFields.style.display = isBox ? 'block' : 'none';
+      if (DOM.boundsCircleFields) DOM.boundsCircleFields.style.display = isCircle ? 'block' : 'none';
+      if (DOM.boundsActionRow) DOM.boundsActionRow.style.display = (isBox || isCircle) ? 'block' : 'none';
+    }
+    if (typeof data.boundsCustomBox === 'boolean') {
+      state.boundsCustomBox = data.boundsCustomBox;
+    }
+    if (typeof data.boundsBoxWidth === 'number' && isFinite(data.boundsBoxWidth) && data.boundsBoxWidth > 0) {
+      state.boundsBoxWidth = data.boundsBoxWidth;
+      if (DOM.boundsBoxWidth) DOM.boundsBoxWidth.value = state.boundsBoxWidth;
+    }
+    if (typeof data.boundsBoxLength === 'number' && isFinite(data.boundsBoxLength) && data.boundsBoxLength > 0) {
+      state.boundsBoxLength = data.boundsBoxLength;
+      if (DOM.boundsBoxLength) DOM.boundsBoxLength.value = state.boundsBoxLength;
+    }
+    if (typeof data.boundsCustomCircle === 'boolean') {
+      state.boundsCustomCircle = data.boundsCustomCircle;
+    }
+    if (typeof data.boundsCircleDiameter === 'number' && isFinite(data.boundsCircleDiameter) && data.boundsCircleDiameter > 0) {
+      state.boundsCircleDiameter = data.boundsCircleDiameter;
+      if (DOM.boundsCircleDiameter) DOM.boundsCircleDiameter.value = state.boundsCircleDiameter;
+    }
+    if (typeof data.showBounds === 'boolean') {
+      if (DOM.toggleLayerBounds) DOM.toggleLayerBounds.checked = data.showBounds;
+      viewer.setBoundsVisibility(data.showBounds);
+    }
+
+    // 5. Engraving & SVG Solid Fill
+    if (typeof data.svgFillSolid === 'boolean') {
+      state.svgFillSolid = data.svgFillSolid;
+      if (DOM.svgFillSolid) DOM.svgFillSolid.checked = state.svgFillSolid;
+    }
+    const validRasterModes = ['grayscale', 'dither', 'atkinson', 'contour'];
+    if (validRasterModes.includes(data.rasterMode)) {
+      state.rasterMode = data.rasterMode;
+      if (DOM.rasterMode) DOM.rasterMode.value = state.rasterMode;
+    }
+    if (typeof data.lineInterval === 'number' && isFinite(data.lineInterval) && data.lineInterval > 0) {
+      state.lineInterval = data.lineInterval;
+      if (DOM.lineInterval) DOM.lineInterval.value = state.lineInterval;
+      if (DOM.svgFillInterval) DOM.svgFillInterval.value = state.lineInterval;
+    }
+    if (typeof data.bidirectional === 'boolean') {
+      state.bidirectional = data.bidirectional;
+      if (DOM.rasterBidirectional) DOM.rasterBidirectional.checked = state.bidirectional;
+    }
+    if (typeof data.contrast === 'number' && isFinite(data.contrast)) {
+      state.contrast = Math.max(-100, Math.min(100, Math.round(data.contrast)));
+      if (DOM.rasterContrast) DOM.rasterContrast.value = state.contrast;
+      if (DOM.rasterContrastVal) DOM.rasterContrastVal.textContent = `${state.contrast}`;
+    }
+    if (typeof data.brightness === 'number' && isFinite(data.brightness)) {
+      state.brightness = Math.max(-100, Math.min(100, Math.round(data.brightness)));
+      if (DOM.rasterBrightness) DOM.rasterBrightness.value = state.brightness;
+      if (DOM.rasterBrightnessVal) DOM.rasterBrightnessVal.textContent = `${state.brightness}`;
+    }
+    if (typeof data.invert === 'boolean') {
+      state.invert = data.invert;
+      if (DOM.rasterInvert) DOM.rasterInvert.checked = state.invert;
+    }
+
+    // 6. Post Processing & G-Code Header/Footer
+    if (data.postDelimiter === 'percent' || data.postDelimiter === 'none') {
+      state.postDelimiter = data.postDelimiter;
+      state.linuxCNC = (state.postDelimiter === 'percent');
+      if (DOM.postDelimiter) DOM.postDelimiter.value = state.postDelimiter;
+    }
+    if (typeof data.prefixGcode === 'string') {
+      state.prefixGcode = data.prefixGcode;
+      if (DOM.gcodePrefix) DOM.gcodePrefix.value = state.prefixGcode;
+    }
+    if (typeof data.postfixGcode === 'string') {
+      state.postfixGcode = data.postfixGcode;
+      if (DOM.gcodePostfix) DOM.gcodePostfix.value = state.postfixGcode;
+    }
+
+    if (!skipSave) {
+      saveAutoSettings();
+    }
+    if (!skipGenerate && state.fileType) {
+      processAndGenerate(true);
+    }
+  }
+
+  function saveNamedProfile(name) {
+    const cleanName = String(name || '').trim();
+    if (!cleanName) return false;
+    const store = readProfileStore();
+    const snapshot = extractProfileSettings();
+    store.profiles[cleanName] = snapshot;
+    store.activeProfile = cleanName;
+    store.lastSettings = snapshot;
+    const ok = writeProfileStore(store);
+    refreshProfileDropdown(cleanName);
+    if (DOM.profileNameInput) DOM.profileNameInput.value = cleanName;
+    setProfileStatus(ok ? `Saved profile "${cleanName}".` : 'Could not write to localStorage.');
+    return ok;
+  }
+
+  function loadNamedProfile(name) {
+    const store = readProfileStore();
+    if (!name) {
+      store.activeProfile = '';
+      writeProfileStore(store);
+      if (DOM.btnProfileDelete) DOM.btnProfileDelete.disabled = true;
+      if (DOM.profileNameInput) DOM.profileNameInput.value = '';
+      setProfileStatus('Using auto-saved settings.');
+      return true;
+    }
+    const profile = store.profiles[name];
+    if (!profile) return false;
+    store.activeProfile = name;
+    writeProfileStore(store);
+    applyProfileSettings(profile, { skipGenerate: false, skipSave: false });
+    if (DOM.profileNameInput) DOM.profileNameInput.value = name;
+    if (DOM.btnProfileDelete) DOM.btnProfileDelete.disabled = false;
+    setProfileStatus(`Loaded profile "${name}".`);
+    return true;
+  }
+
+  function deleteNamedProfile(name) {
+    if (!name) return false;
+    const store = readProfileStore();
+    if (!store.profiles[name]) return false;
+    delete store.profiles[name];
+    if (store.activeProfile === name) {
+      store.activeProfile = '';
+    }
+    writeProfileStore(store);
+    refreshProfileDropdown('');
+    if (DOM.profileNameInput) DOM.profileNameInput.value = '';
+    setProfileStatus(`Deleted profile "${name}".`);
+    return true;
+  }
+
+  function resetProfileToDefaults() {
+    const store = readProfileStore();
+    store.activeProfile = '';
+    writeProfileStore(store);
+    applyProfileSettings(DEFAULT_PROFILE_SETTINGS, { skipGenerate: false, skipSave: false });
+    refreshProfileDropdown('');
+    if (DOM.profileNameInput) DOM.profileNameInput.value = '';
+    setProfileStatus('Reset all settings to factory defaults.');
+  }
+
+  function exportProfileJson() {
+    const activeName = (DOM.profileNameInput && DOM.profileNameInput.value.trim())
+      || (DOM.profileSelect && DOM.profileSelect.value)
+      || 'dangerous_laser_profile';
+    const payload = {
+      app: 'Dangerous Laser',
+      version: 1,
+      name: activeName,
+      exportedAt: new Date().toISOString(),
+      settings: extractProfileSettings()
+    };
+    const jsonText = JSON.stringify(payload, null, 2);
+    const safeFileName = activeName.replace(/[^a-z0-9_\-\s]/gi, '').trim().replace(/\s+/g, '_') || 'dangerous_laser_profile';
+    const blob = new Blob([jsonText], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${safeFileName}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    setProfileStatus(`Exported "${safeFileName}.json".`);
+    return jsonText;
+  }
+
+  function importProfileJsonText(jsonText, fallbackName = '') {
+    try {
+      const parsed = JSON.parse(jsonText);
+      if (!parsed || typeof parsed !== 'object') {
+        setProfileStatus('Invalid profile JSON file.');
+        return false;
+      }
+
+      const store = readProfileStore();
+      let settingsToApply = null;
+      let importedName = '';
+
+      if (parsed.settings && typeof parsed.settings === 'object') {
+        settingsToApply = parsed.settings;
+        importedName = (typeof parsed.name === 'string' && parsed.name.trim()) ? parsed.name.trim() : fallbackName.trim();
+      } else if (parsed.profiles && typeof parsed.profiles === 'object') {
+        // Support importing a full multi-profile backup bundle
+        Object.assign(store.profiles, parsed.profiles);
+        const firstProfileName = parsed.activeProfile && store.profiles[parsed.activeProfile]
+          ? parsed.activeProfile
+          : Object.keys(parsed.profiles)[0] || '';
+        settingsToApply = parsed.lastSettings || (firstProfileName ? store.profiles[firstProfileName] : null);
+        importedName = firstProfileName;
+      } else {
+        // Plain raw settings JSON object
+        settingsToApply = parsed;
+        importedName = fallbackName.trim();
+      }
+
+      if (!settingsToApply) {
+        setProfileStatus('No settings found in JSON file.');
+        return false;
+      }
+
+      applyProfileSettings(settingsToApply, { skipGenerate: false, skipSave: true });
+      const appliedSnapshot = extractProfileSettings();
+      store.lastSettings = appliedSnapshot;
+
+      if (importedName) {
+        store.profiles[importedName] = appliedSnapshot;
+        store.activeProfile = importedName;
+      } else {
+        store.activeProfile = '';
+      }
+      writeProfileStore(store);
+      refreshProfileDropdown(store.activeProfile);
+      if (DOM.profileNameInput) DOM.profileNameInput.value = store.activeProfile;
+      setProfileStatus(importedName ? `Imported profile "${importedName}".` : 'Imported settings from JSON.');
+      return true;
+    } catch (err) {
+      setProfileStatus('Failed to parse profile JSON.');
+      return false;
+    }
+  }
+
+  function initProfiles() {
+    const store = readProfileStore();
+    if (store.lastSettings) {
+      applyProfileSettings(store.lastSettings, { skipGenerate: true, skipSave: true });
+    }
+    const active = (store.activeProfile && store.profiles[store.activeProfile]) ? store.activeProfile : '';
+    refreshProfileDropdown(active);
+    if (active && DOM.profileNameInput) {
+      DOM.profileNameInput.value = active;
+      setProfileStatus(`Active profile: "${active}".`);
+    } else if (store.lastSettings) {
+      setProfileStatus('Restored auto-saved settings.');
+    }
+  }
+
   window.loadSvgString = loadSvgString;
   window.loadRasterDataUrl = loadRasterDataUrl;
   window.highlightGcodeLine = highlightGcodeLine;
   window.resetSimulation = resetSimulation;
   window.setTheme = setTheme;
   window.downloadBoundsTraceFile = downloadBoundsTraceFile;
+  window.ProfileManager = {
+    storageKey: PROFILE_STORAGE_KEY,
+    extractSettings: extractProfileSettings,
+    readStore: readProfileStore,
+    saveProfile: saveNamedProfile,
+    loadProfile: loadNamedProfile,
+    deleteProfile: deleteNamedProfile,
+    resetDefaults: resetProfileToDefaults,
+    exportJson: exportProfileJson,
+    importJsonText: importProfileJsonText
+  };
 
   // Self-initialization
+  isInitializing = true;
   initEvents();
-  setTheme('default');
+  setTheme('default', { skipSave: true });
+  initProfiles();
+  isInitializing = false;
 
   // Preload embedded offline Army Stencil font faces into browser memory
   if (document.fonts && document.fonts.load) {

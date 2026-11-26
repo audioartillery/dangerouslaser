@@ -535,6 +535,46 @@ html, body {
   background: var(--border-subtle);
   border-color: var(--border-highlight);
 }
+.btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn-secondary:disabled:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-subtle);
+}
+
+/* Local Profile Manager */
+.profile-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+.profile-save-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.profile-save-row .control-input {
+  flex: 1;
+  min-width: 0;
+}
+.profile-save-row .btn-secondary {
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+.profile-actions-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.profile-actions-row .btn-secondary {
+  padding: 5px 6px;
+  font-size: 10.5px;
+}
 
 .btn-toggle {
   background: var(--bg-elevated);

@@ -1054,7 +1054,131 @@
     }
   }
 
-  function loadSvgString(svgText) {
+  /**
+   * If a bounding box or bounding circle is enabled when a new file is opened,
+   * scale the design proportionally so it fits within the enabled box/circle.
+   */
+  function fitLoadedDesignToBounds() {
+    if (state.boundsType !== 'box' && state.boundsType !== 'circle') return;
+    if (!state.rawWidth || !state.rawHeight) return;
+
+    let scaleFactor = 1.0;
+
+    if (state.boundsType === 'box') {
+      const boxW = state.boundsBoxWidth;
+      const boxH = state.boundsBoxLength;
+      if (!boxW || !boxH || boxW <= 0 || boxH <= 0) return;
+
+      let designW = state.rawWidth;
+      let designH = state.rawHeight;
+
+      if (state.fileType === 'svg' && state.rawSvgData && state.rawSvgData.paths && state.rawSvgData.paths.length > 0) {
+        const probe = GcodeGenerator.transformPaths(state.rawSvgData.paths, {
+          targetWidth: state.rawWidth,
+          targetHeight: state.rawHeight,
+          docWidth: state.rawDocWidthPx,
+          docHeight: state.rawDocHeightPx,
+          rotationDeg: state.rotationDeg,
+          flipH: state.flipH,
+          flipV: state.flipV,
+          originAlign: state.originAlign,
+          offsetX: 0,
+          offsetY: 0,
+          fillSolid: false,
+          useDocBounds: false
+        });
+        if (probe.bounds.width > 0 && probe.bounds.height > 0) {
+          designW = probe.bounds.width;
+          designH = probe.bounds.height;
+        }
+      } else {
+        const rad = (state.rotationDeg * Math.PI) / 180;
+        designW = state.rawWidth * Math.abs(Math.cos(rad)) + state.rawHeight * Math.abs(Math.sin(rad));
+        designH = state.rawWidth * Math.abs(Math.sin(rad)) + state.rawHeight * Math.abs(Math.cos(rad));
+      }
+
+      if (designW > 0 && designH > 0) {
+        scaleFactor = Math.min(boxW / designW, boxH / designH);
+      }
+      state.boundsCustomBox = true;
+    } else if (state.boundsType === 'circle') {
+      const diam = state.boundsCircleDiameter;
+      if (!diam || diam <= 0) return;
+      const targetRadius = diam / 2;
+      let maxR = 0;
+
+      if (state.fileType === 'svg' && state.rawSvgData && state.rawSvgData.paths && state.rawSvgData.paths.length > 0) {
+        const probe = GcodeGenerator.transformPaths(state.rawSvgData.paths, {
+          targetWidth: state.rawWidth,
+          targetHeight: state.rawHeight,
+          docWidth: state.rawDocWidthPx,
+          docHeight: state.rawDocHeightPx,
+          rotationDeg: state.rotationDeg,
+          flipH: state.flipH,
+          flipV: state.flipV,
+          originAlign: state.originAlign,
+          offsetX: 0,
+          offsetY: 0,
+          fillSolid: false,
+          useDocBounds: false
+        });
+        for (const path of probe.paths) {
+          if (path.isCircle) {
+            const d = Math.hypot(path.cx, path.cy) + path.r;
+            if (d > maxR) maxR = d;
+          }
+          for (const pt of path) {
+            const d = Math.hypot(pt.x, pt.y);
+            if (d > maxR) maxR = d;
+          }
+        }
+      } else {
+        // Raster rectangle: compute max distance of the 4 rotated & aligned corners from machine zero (0,0)
+        const probe = GcodeGenerator.transformPaths([], {
+          targetWidth: state.rawWidth,
+          targetHeight: state.rawHeight,
+          docWidth: state.rawWidth,
+          docHeight: state.rawHeight,
+          rotationDeg: state.rotationDeg,
+          flipH: state.flipH,
+          flipV: state.flipV,
+          originAlign: state.originAlign,
+          offsetX: 0,
+          offsetY: 0,
+          useDocBounds: true
+        });
+        const rad = (state.rotationDeg * Math.PI) / 180;
+        const cosR = Math.cos(rad);
+        const sinR = Math.sin(rad);
+        const hw = state.rawWidth / 2;
+        const hh = state.rawHeight / 2;
+        const corners = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]];
+        for (const [cx, cy] of corners) {
+          const rx = cx * cosR - cy * sinR + probe.center.x;
+          const ry = cx * sinR + cy * cosR + probe.center.y;
+          const d = Math.hypot(rx, ry);
+          if (d > maxR) maxR = d;
+        }
+      }
+
+      if (maxR > 0) {
+        scaleFactor = targetRadius / maxR;
+      }
+      state.boundsCustomCircle = true;
+    }
+
+    if (isFinite(scaleFactor) && scaleFactor > 0) {
+      state.rawWidth = state.rawWidth * scaleFactor;
+      state.rawHeight = state.rawHeight * scaleFactor;
+      state.targetWidth = state.rawWidth;
+      state.targetHeight = state.rawHeight;
+      state.aspectRatio = state.targetHeight > 0 ? (state.targetWidth / state.targetHeight) : 1.0;
+      DOM.dimWidth.value = Number(state.targetWidth).toFixed(state.units === 'standard' ? 3 : 1);
+      DOM.dimHeight.value = Number(state.targetHeight).toFixed(state.units === 'standard' ? 3 : 1);
+    }
+  }
+
+  function loadSvgString(svgText, { fitToBounds = true } = {}) {
     try {
       const parsed = SVGParser.parseSVG(svgText);
       state.fileType = 'svg';
@@ -1090,6 +1214,10 @@
       DOM.dimWidth.value = Number(state.targetWidth).toFixed(state.units === 'standard' ? 3 : 1);
       DOM.dimHeight.value = Number(state.targetHeight).toFixed(state.units === 'standard' ? 3 : 1);
 
+      if (fitToBounds) {
+        fitLoadedDesignToBounds();
+      }
+
       // Create a pure white preview image from SVG
       const whiteSvgText = makeSvgWhite(svgText, docW, docH);
       const svgBlob = new Blob([whiteSvgText], { type: 'image/svg+xml;charset=utf-8' });
@@ -1123,7 +1251,7 @@
     }
   }
 
-  function loadRasterDataUrl(dataUrl) {
+  function loadRasterDataUrl(dataUrl, { fitToBounds = true } = {}) {
     const img = new Image();
     img.onload = () => {
       state.fileType = 'raster';
@@ -1155,6 +1283,10 @@
       state.aspectRatio = state.targetHeight > 0 ? (state.targetWidth / state.targetHeight) : 1.0;
       DOM.dimWidth.value = Number(state.targetWidth).toFixed(state.units === 'standard' ? 3 : 1);
       DOM.dimHeight.value = Number(state.targetHeight).toFixed(state.units === 'standard' ? 3 : 1);
+
+      if (fitToBounds) {
+        fitLoadedDesignToBounds();
+      }
 
       DOM.rasterOptionsSection.style.display = 'block';
       if (DOM.svgFillOptionRow) DOM.svgFillOptionRow.style.display = 'none';
@@ -1261,7 +1393,7 @@
 
     state.fileName = 'custom_text';
     DOM.fileStatusBadge.textContent = 'Custom Text';
-    loadSvgString(svgString);
+    loadSvgString(svgString, { fitToBounds: false });
   }
 
   function loadSample(key) {
